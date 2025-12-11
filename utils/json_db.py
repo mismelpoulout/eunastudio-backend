@@ -23,16 +23,18 @@ def init_db():
 
 
 def load_db():
-    """Carga DB, corrige errores y ejecuta expiración automática."""
+    """Carga DB, corrige errores corruptos y ejecuta expiración automática."""
     init_db()
 
     try:
         with open(DB_PATH, "r") as f:
             data = json.load(f)
     except json.JSONDecodeError:
+        # Si la DB está corrupta → reiniciamos
         data = {"users": []}
         save_db(data)
 
+    # Ejecutar expiración automática del trial
     check_user_expiration(data)
 
     return data
@@ -45,36 +47,39 @@ def save_db(data):
 
 
 # -------------------------------------------------------
-# 🔥 EXPIRACIÓN AUTOMÁTICA DEL TRIAL (Regla oficial)
+# 🔥 EXPIRACIÓN AUTOMÁTICA DEL TRIAL
 # -------------------------------------------------------
 def check_user_expiration(data):
     """
-    Aplica regla de expiración:
+    Reglas oficiales:
 
-    - Usuario NO verificado → NO se bloquea.
-    - Usuario con plan activo → NO se bloquea.
-    - Usuario verificado SIN plan → si pasaron 72h → BLOQUEO.
+    ✔ Usuario NO verificado → NO se bloquea
+    ✔ Usuario con plan activo → NO se bloquea nunca
+    ✔ Usuario verificado y sin plan → trial de 72 horas
+         → si pasan 72h → BLOQUEADO automáticamente
+
+    El bloqueo ocurre solo si `created_at` existe.
     """
     now = datetime.utcnow()
     modified = False
 
-    for user in data["users"]:
+    for user in data.get("users", []):
         created_at = user.get("created_at")
-        plan_active = user.get("plan_active")
+        plan_active = user.get("plan_active", False)
 
-        # 1️⃣ No verificado → created_at = None → NO se bloquea
+        # 1️⃣ No verificado (created_at = None) → no se bloquea
         if not created_at:
+            continue
+
+        # 2️⃣ Plan activo → nunca se bloquea
+        if plan_active:
             continue
 
         # Convertir fecha
         try:
             created_at_dt = datetime.fromisoformat(created_at)
         except Exception:
-            continue
-
-        # 2️⃣ Tiene plan → NUNCA se bloquea
-        if plan_active:
-            continue
+            continue  # evitar crash por formato inesperado
 
         # 3️⃣ Trial expirado
         if now - created_at_dt >= timedelta(hours=72):

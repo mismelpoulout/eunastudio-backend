@@ -12,14 +12,14 @@ auth = Blueprint("auth", __name__)
 # ------------------------------------------------------------
 def find_user(email, db):
     email = email.strip().lower()
-    for u in db["users"]:
+    for u in db.get("users", []):
         if u["email"].lower() == email:
             return u
     return None
 
 
 # ------------------------------------------------------------
-#               VERIFICAR EMAIL
+#               VERIFICAR EMAIL (Activar Trial)
 # ------------------------------------------------------------
 @auth.post("/verify")
 def verify():
@@ -33,9 +33,11 @@ def verify():
     if not user:
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
+    # Ya verificado
     if user.get("is_verified"):
         return jsonify({"msg": "La cuenta ya está verificada"}), 400
 
+    # Código incorrecto
     if user.get("verification_code") != code:
         return jsonify({"msg": "Código incorrecto"}), 400
 
@@ -61,7 +63,7 @@ def verify():
 
 
 # ------------------------------------------------------------
-#                     LOGIN
+#                     LOGIN (Backend Full Control)
 # ------------------------------------------------------------
 @auth.post("/login")
 def login():
@@ -89,15 +91,16 @@ def login():
             "action": "verify_required"
         }), 401
 
-    # Usuario bloqueado
+    # Usuario bloqueado (trial expirado)
     if user.get("blocked", False):
         return jsonify({
             "msg": "Tu cuenta está bloqueada",
             "blocked": True,
-            "blocked_at": user.get("blocked_at")
+            "blocked_at": user.get("blocked_at"),
+            "plan_active": user.get("plan_active", False)
         }), 403
 
-    # LOGIN OK → devuelve todo lo que necesita el frontend
+    # LOGIN OK
     return jsonify({
         "msg": "Login exitoso",
         "user_id": user["id"],
@@ -110,7 +113,7 @@ def login():
 
 
 # ------------------------------------------------------------
-#                ACTIVAR PLAN
+#                ACTIVAR PLAN (Suscripción)
 # ------------------------------------------------------------
 @auth.post("/plan/activate")
 def activate_plan():
@@ -123,6 +126,7 @@ def activate_plan():
     if not user:
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
+    # Activar plan y quitar bloqueo
     user["plan_active"] = True
     user["blocked"] = False
     user["blocked_at"] = None
@@ -133,7 +137,7 @@ def activate_plan():
 
 
 # ------------------------------------------------------------
-#                 ESTADO DEL USUARIO
+#                 ESTADO COMPLETO DEL USUARIO
 # ------------------------------------------------------------
 @auth.get("/user/status")
 def user_status():
@@ -151,5 +155,6 @@ def user_status():
         "blocked": user["blocked"],
         "created_at": user["created_at"],
         "blocked_at": user["blocked_at"],
-        "trial_end": user.get("trial_end")
+        "trial_end": user.get("trial_end"),
+        "is_verified": user.get("is_verified", False)
     }), 200
