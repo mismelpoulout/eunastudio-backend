@@ -8,18 +8,21 @@ import random
 registro = Blueprint("registro", __name__)
 
 
+# ------------------------------------------------------------
+#               REGISTRO DE USUARIO
+# ------------------------------------------------------------
 @registro.post("/signup")
 def signup_user():
     data = request.json
-    email = data.get("email")
-    password = data.get("password")
-    name = data.get("name")
+    email = data.get("email", "").strip().lower()   # ← normalizamos email
+    password = data.get("password", "")
+    name = data.get("name", "").strip()
 
     # Validación básica
     if not email or not password:
         return jsonify({"msg": "Email y contraseña son obligatorios"}), 400
 
-    # Validación de contraseña segura
+    # Validación contraseña segura
     if not is_valid_password(password):
         return jsonify({
             "msg": "La contraseña no cumple con los requisitos de seguridad.",
@@ -34,27 +37,28 @@ def signup_user():
 
     db = load_db()
 
-    # -----------------------------------------
-    # 🚫 EVITAR REGISTRO DUPLICADO
-    # -----------------------------------------
+    # ------------------------------------------------------------
+    # ✔ Verificar si el usuario YA existe
+    # ------------------------------------------------------------
     for u in db["users"]:
-        if u["email"] == email:
+        if u["email"].strip().lower() == email:
 
+            # Caso: registrado pero NO verificado
             if not u["is_verified"]:
                 return jsonify({
-                    "msg": "Este email ya está registrado, pero aún no fue verificado.",
+                    "msg": "Este correo ya está registrado, pero aún no fue verificado.",
                     "action": "verify_pending"
                 }), 400
 
+            # Caso: completamente registrado
             return jsonify({
-                "msg": "El email ya está registrado.",
+                "msg": "Este correo ya está registrado.",
                 "action": "email_exists"
             }), 400
 
-    # -----------------------------------------
-    # REGISTRO NUEVO
-    # -----------------------------------------
-
+    # ------------------------------------------------------------
+    # ✔ Crear usuario nuevo
+    # ------------------------------------------------------------
     verification_code = str(random.randint(100000, 999999))
 
     new_user = {
@@ -66,15 +70,20 @@ def signup_user():
         "verification_code": verification_code,
         "plan_active": False,
         "blocked": False,
+        "blocked_at": None,
         "created_at": None,
-        "trial_end": None,
-        "blocked_at": None
+        "trial_end": None
     }
 
     db["users"].append(new_user)
     save_db(db)
 
+    # ------------------------------------------------------------
+    # ⚠ En producción aquí deberías llamar a tu función de email
+    # send_email_verification(email, verification_code)
+    # ------------------------------------------------------------
+
     return jsonify({
         "msg": "Usuario registrado correctamente. Revisa tu correo para validar la cuenta.",
-        "verification_code": verification_code
+        "verification_code": verification_code  # ← visible solo en desarrollo
     }), 201
