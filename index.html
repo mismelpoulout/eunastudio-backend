@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Pruebas Backend</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body { background: #f7f7f7; }
+        .card { max-width: 450px; margin: 40px auto; }
+        .hidden { display: none; }
+        #timerBox { font-size: 1.4rem; font-weight: bold; }
+        
+        .rule-item {
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .rule-item span {
+            font-weight: bold;
+        }
+        
+        .valid {
+            color: green;
+        }
+        
+        .invalid {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+
+<!-- CARD PRINCIPAL -->
+<div class="card shadow" id="authCard">
+    <div class="card-body">
+        <h2 class="text-center mb-4">Eunastudio — Backend Test</h2>
+
+        <!-- NAV -->
+        <ul class="nav nav-tabs mb-3" id="formTabs">
+            <li class="nav-item">
+                <a class="nav-link active" data-form="registerForm">Registro</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-form="loginForm">Login</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-form="recoverForm">Recuperar</a>
+            </li>
+        </ul>
+
+        <!-- FORMULARIO REGISTRO -->
+        <form id="registerForm">
+            <div class="mb-3">
+                <label>Email</label>
+                <input id="regEmail" type="email" class="form-control">
+            </div>
+
+            <div class="mb-3">
+                <label>Contraseña</label>
+                <input id="regPass" type="password" class="form-control">
+            </div>
+
+            <!-- ✔ CHECKLIST DE CONTRASEÑA -->
+            <div id="passwordRules" class="mb-3">
+                <div id="ruleLength" class="rule-item invalid">❌ <span>Mínimo 8 caracteres</span></div>
+                <div id="ruleUpper" class="rule-item invalid">❌ <span>Una letra mayúscula</span></div>
+                <div id="ruleLower" class="rule-item invalid">❌ <span>Una letra minúscula</span></div>
+                <div id="ruleNumber" class="rule-item invalid">❌ <span>Un número</span></div>
+                <div id="ruleSpecial" class="rule-item invalid">❌ <span>Un carácter especial (!@#$%^&*)</span></div>
+            </div>
+            <!-- FIN CHECKLIST -->
+
+            <button type="button" class="btn btn-primary w-100" onclick="register()">Registrar</button>
+        </form>
+
+        <!-- FORMULARIO LOGIN -->
+        <form id="loginForm" class="hidden">
+            <div class="mb-3">
+                <label>Email</label>
+                <input id="logEmail" type="email" class="form-control">
+            </div>
+
+            <div class="mb-3">
+                <label>Contraseña</label>
+                <input id="logPass" type="password" class="form-control">
+            </div>
+
+            <button type="button" class="btn btn-success w-100" onclick="login()">Iniciar Sesión</button>
+        </form>
+
+        <!-- FORMULARIO RECUPERAR -->
+        <form id="recoverForm" class="hidden">
+            <div class="mb-3">
+                <label>Email</label>
+                <input id="recEmail" type="email" class="form-control">
+            </div>
+            <button type="button" class="btn btn-warning w-100" onclick="recover()">Recuperar contraseña</button>
+        </form>
+
+        <div class="mt-3" id="responseBox"></div>
+    </div>
+</div>
+
+
+<!-- PANEL DE USUARIO -->
+<div class="card shadow hidden" id="userPanel">
+    <div class="card-body text-center">
+
+        <h3>Bienvenido</h3>
+        <p id="userEmail" class="fw-bold"></p>
+
+        <hr>
+
+        <h5>Tiempo restante de prueba:</h5>
+        <div id="timerBox">--:--:--</div>
+
+        <hr>
+
+        <button class="btn btn-danger w-100 mt-3" onclick="logout()">Cerrar sesión</button>
+
+    </div>
+</div>
+
+
+
+
+<script>
+const API = "http://localhost:5000";
+let trialInterval = null;
+
+
+
+// ----------------------------------------
+// ✔ CHECKLIST DINÁMICO DE CONTRASEÑA
+// ----------------------------------------
+document.getElementById("regPass").addEventListener("input", function () {
+    const pass = this.value;
+
+    // Reglas
+    updateRule("ruleLength", pass.length >= 8);
+    updateRule("ruleUpper", /[A-Z]/.test(pass));
+    updateRule("ruleLower", /[a-z]/.test(pass));
+    updateRule("ruleNumber", /[0-9]/.test(pass));
+    updateRule("ruleSpecial", /[!@#$%^&*(),.?":{}|<>_\-+=/\\\[\]]/.test(pass));
+});
+
+function updateRule(ruleId, condition) {
+    const rule = document.getElementById(ruleId);
+    
+    if (condition) {
+        rule.classList.remove("invalid");
+        rule.classList.add("valid");
+        rule.innerHTML = "✔ " + rule.innerText.substring(2);
+    } else {
+        rule.classList.remove("valid");
+        rule.classList.add("invalid");
+        rule.innerHTML = "❌ " + rule.innerText.substring(2);
+    }
+}
+
+
+
+// Cambiar pestañas
+document.querySelectorAll("#formTabs .nav-link").forEach(btn => {
+    btn.addEventListener("click", () => {
+        document.querySelectorAll("form").forEach(f => f.classList.add("hidden"));
+        document.querySelectorAll("#formTabs .nav-link").forEach(f => f.classList.remove("active"));
+
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.form).classList.remove("hidden");
+    });
+});
+
+
+// ---------------------- REGISTRO -------------------------
+async function register() {
+    let email = document.getElementById("regEmail").value;
+    let password = document.getElementById("regPass").value;
+
+    let res = await fetch(API + "/registro/register", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email, password})
+    });
+
+    let data = await res.json();
+    showResponse(data);
+
+    if (res.ok) {
+        document.getElementById("responseBox").innerHTML += `
+            <div class="alert alert-success mt-2">
+                Registro exitoso. Revisa tu email (o spam) para verificar tu cuenta.
+            </div>
+        `;
+    }
+}
+
+
+// ---------------------- LOGIN -------------------------
+async function login() {
+    let email = document.getElementById("logEmail").value;
+    let password = document.getElementById("logPass").value;
+
+    let res = await fetch(API + "/auth/login", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email, password})
+    });
+
+    let data = await res.json();
+    showResponse(data);
+
+    if (!res.ok) return;
+
+    // Usuario NO verificado
+    if (data.msg && data.msg.includes("no está verificada")) {
+        document.getElementById("responseBox").innerHTML += `
+            <div class="alert alert-warning mt-2">Debes verificar tu correo antes de acceder.</div>`;
+        return;
+    }
+
+    // Usuario bloqueado
+    if (data.blocked === true) {
+        document.getElementById("responseBox").innerHTML += `
+            <div class="alert alert-danger mt-2">Tu cuenta está bloqueada.</div>`;
+        return;
+    }
+
+    // Panel usuario
+    document.getElementById("authCard").classList.add("hidden");
+    document.getElementById("userPanel").classList.remove("hidden");
+    document.getElementById("userEmail").innerText = data.email;
+
+    if (data.trial_end) {
+        startCountdown(new Date(data.trial_end));
+    } else {
+        fetchUserStatus(email);
+    }
+}
+
+
+// ---------------------- STATUS -------------------------
+async function fetchUserStatus(email) {
+    let res = await fetch(`${API}/auth/user/status?email=${email}`);
+    let data = await res.json();
+
+    if (!data.trial_end) {
+        document.getElementById("timerBox").innerHTML = "Aún no verificado";
+        return;
+    }
+
+    startCountdown(new Date(data.trial_end));
+}
+
+
+// ---------------------- COUNTDOWN -------------------------
+function startCountdown(endTime) {
+    if (trialInterval) clearInterval(trialInterval);
+
+    trialInterval = setInterval(() => {
+        let now = Date.now();
+        let diff = endTime - now;
+
+        if (diff <= 0) {
+            clearInterval(trialInterval);
+            document.getElementById("timerBox").innerHTML = "TIEMPO AGOTADO";
+            return;
+        }
+
+        let h = Math.floor(diff / (1000 * 60 * 60));
+        let m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        let s = Math.floor((diff % (1000 * 60)) / 1000);
+
+        document.getElementById("timerBox").innerHTML = `${h}h ${m}m ${s}s`;
+
+    }, 1000);
+}
+
+
+// ---------------------- RECUPERAR -------------------------
+function recover() {
+    let email = document.getElementById("recEmail").value;
+    showResponse({msg: "Recuperación no implementada", email});
+}
+
+
+// ---------------------- LOGOUT -------------------------
+function logout() {
+    document.getElementById("userPanel").classList.add("hidden");
+    document.getElementById("authCard").classList.remove("hidden");
+    if (trialInterval) clearInterval(trialInterval);
+}
+
+
+// ---------------------- RESPUESTA -------------------------
+function showResponse(data) {
+    document.getElementById("responseBox").innerHTML = `
+        <div class="alert alert-info mt-3">
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+        </div>`;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: eunastudio-backend
+    env: python
+    region: oregon        # Puedes cambiarlo a southamerica-west1 si Render lo habilita
+    plan: free            # O starter, según tu uso
+    branch: main
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    autoDeploy: true
+
+    envVars:
+      - key: FLASK_ENV
+        value: production
+
+      # Variables secretas → deberás ingresar los valores reales en el Dashboard
+      - key: MAIL_SENDER
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: JWT_ALGORITHM
+        value: HS256

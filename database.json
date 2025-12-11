@@ -1,0 +1,16 @@
+{
+    "users": [
+        {
+            "id": "e353761d-6f65-4bd7-be3c-0030b62a8adc",
+            "email": "mismelpoulout@gmail.com",
+            "password": "scrypt:32768:8:1$9ZvyfKVdnoWJ1cA9$e24f7ad3d2daab3a71db2e22a71689b98c55944609111a61301a8241d657fe7272978071527c945cbaf1610c0f838442d3020f0f4b2ce23610e5f26bc718c6c4",
+            "is_verified": false,
+            "verification_code": "991046",
+            "plan_active": false,
+            "blocked": false,
+            "created_at": null,
+            "trial_end": null,
+            "blocked_at": null
+        }
+    ]
+}
