@@ -68,7 +68,7 @@ def signup_user():
     save_db(db)
 
     # ---------------- ENVIAR EMAIL ----------------
-    email_sent = send_verification_email(email, verification_code)
+    # email_sent = send_verification_email(email, verification_code)
 
     if not email_sent:
         return jsonify({
