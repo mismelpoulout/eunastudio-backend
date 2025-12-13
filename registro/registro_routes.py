@@ -19,7 +19,10 @@ def signup_user():
     email = data.get("email", "").strip().lower()
     password = data.get("password", "")
     name = data.get("name", "").strip()
-
+    
+    print("📩 Registrando usuario:", email)
+    print("🔑 Código verificación:", verification_code)
+    
     # ---------------- VALIDACIONES ----------------
     if not email or not password:
         return jsonify({"msg": "Email y contraseña son obligatorios"}), 400
@@ -75,7 +78,9 @@ def signup_user():
             "msg": "El usuario fue creado, pero no pudimos enviar el correo de verificación.",
             "action": "email_failed"
         }), 500
-
+    
+    print("✅ Usuario guardado correctamente")
+     
     # ---------------- RESPUESTA OK ----------------
     return jsonify({
         "msg": "Usuario registrado correctamente. Revisa tu correo para validar tu cuenta."
