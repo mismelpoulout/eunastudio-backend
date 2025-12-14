@@ -1,23 +1,55 @@
-CREATE TABLE IF NOT EXISTS users (
-  id VARCHAR(36) PRIMARY KEY,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  name VARCHAR(255) NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
+-- =========================
+-- USERS
+-- =========================
+CREATE TABLE users (
+    id CHAR(36) PRIMARY KEY,
+    name VARCHAR(100),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    avatar_url VARCHAR(255),
+    role ENUM('user', 'admin') DEFAULT 'user',
 
-  avatar_url TEXT NULL,
-  role VARCHAR(50) NOT NULL DEFAULT 'user',
+    is_verified BOOLEAN DEFAULT FALSE,
+    verification_code VARCHAR(10),
 
-  is_verified BOOLEAN NOT NULL DEFAULT FALSE,
-  verification_code VARCHAR(10) NULL,
+    plan ENUM('free', 'premium') DEFAULT 'free',
+    plan_start DATETIME,
+    plan_end DATETIME,
 
-  plan_type VARCHAR(50) NULL,
-  plan_start DATETIME NULL,
-  plan_end DATETIME NULL,
-  plan_active BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 
-  blocked BOOLEAN NOT NULL DEFAULT FALSE,
-  blocked_at DATETIME NULL,
+-- =========================
+-- SESSIONS
+-- =========================
+CREATE TABLE sessions (
+    id CHAR(36) PRIMARY KEY,
+    user_id CHAR(36),
+    jwt_token TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- =========================
+-- EXAM RESULTS
+-- =========================
+CREATE TABLE exam_results (
+    id CHAR(36) PRIMARY KEY,
+    user_id CHAR(36),
+    exam_type ENUM(
+    'corto',
+    'trivia',
+    'simulacion',
+    'especialidad'
+)
+    specialty VARCHAR(100),
+
+    score INT,
+    total_questions INT,
+    duration_seconds INT,
+
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

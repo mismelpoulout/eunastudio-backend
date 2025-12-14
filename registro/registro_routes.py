@@ -22,26 +22,32 @@ def signup_user():
     print("📩 Registrando usuario:", email)
 
     # ---------------- VALIDACIONES ----------------
-    if not email or not password or not name:
-        return jsonify({"msg": "Nombre, email y contraseña son obligatorios"}), 400
+    if not name or not email or not password:
+        return jsonify({
+            "msg": "Nombre, correo y contraseña son obligatorios"
+        }), 400
 
     if not is_valid_password(password):
         return jsonify({
-            "msg": "La contraseña no cumple con los requisitos de seguridad.",
+            "msg": "La contraseña no cumple con los requisitos de seguridad",
             "action": "invalid_password"
         }), 400
 
     conn = None
+
     try:
         conn = get_connection()
 
-        with conn.cursor() as cur:
+        with conn.cursor(dictionary=True) as cur:
             # ---------------- USUARIO EXISTENTE ----------------
-            cur.execute("SELECT id, is_verified FROM users WHERE email=%s", (email,))
-            existing = cur.fetchone()
+            cur.execute(
+                "SELECT id, is_verified FROM users WHERE email = %s",
+                (email,)
+            )
+            existing_user = cur.fetchone()
 
-            if existing:
-                if not existing["is_verified"]:
+            if existing_user:
+                if not existing_user["is_verified"]:
                     return jsonify({
                         "msg": "Este correo ya está registrado pero no verificado.",
                         "action": "verify_pending"
@@ -55,8 +61,9 @@ def signup_user():
             # ---------------- CREAR USUARIO ----------------
             user_id = str(uuid.uuid4())
             verification_code = str(random.randint(100000, 999999))
+            password_hash = generate_password_hash(password)
 
-            print("🔑 Código de verificación generado:", verification_code)
+            print("🔑 Código de verificación:", verification_code)
 
             cur.execute("""
                 INSERT INTO users (
@@ -66,38 +73,47 @@ def signup_user():
                     password_hash,
                     verification_code,
                     is_verified,
-                    role
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    role,
+                    plan,
+                    plan_start,
+                    plan_end,
+                    created_at
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
             """, (
                 user_id,
                 email,
                 name,
-                generate_password_hash(password),
+                password_hash,
                 verification_code,
                 False,
-                "user"
+                "user",
+                "trial",
+                None,
+                None
             ))
+
+            conn.commit()
 
         # ---------------- ENVIAR EMAIL ----------------
         email_sent = send_verification_email(email, verification_code)
 
         if not email_sent:
-            print("⚠️ Usuario creado pero falló envío de email")
+            print("⚠️ Email de verificación no enviado")
             return jsonify({
-                "msg": "La cuenta fue creada, pero no pudimos enviar el correo de verificación.",
+                "msg": "La cuenta fue creada, pero no se pudo enviar el correo de verificación.",
                 "action": "email_failed"
             }), 500
 
-        print("✅ Usuario creado y correo enviado correctamente")
+        print("✅ Usuario creado correctamente")
 
         return jsonify({
             "msg": "Usuario registrado correctamente. Revisa tu correo para validar tu cuenta."
         }), 201
 
     except Exception as e:
-        print("❌ ERROR REGISTRO:", e)
+        print("❌ ERROR REGISTRO:", str(e))
         return jsonify({
-            "msg": "Error interno al crear la cuenta"
+            "msg": "Error interno del servidor"
         }), 500
 
     finally:
