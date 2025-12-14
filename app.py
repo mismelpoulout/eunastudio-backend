@@ -6,7 +6,8 @@ from flask_cors import CORS
 from auth.auth_routes import auth
 from registro.registro_routes import registro
 from routes.debug import debug  # 👈 importante para /debug/users
-
+from routes.debug_db import debug_db
+app.register_blueprint(debug_db)
 
 def create_app():
     app = Flask(__name__)
