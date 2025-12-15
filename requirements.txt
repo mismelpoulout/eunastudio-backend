@@ -14,5 +14,5 @@ PyJWT==2.10.1
 # Server
 gunicorn==21.2.0
 python-jose==3.3.0
-mysql-connector-python
+
 cryptography==41.0.4
