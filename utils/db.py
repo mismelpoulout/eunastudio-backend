@@ -8,10 +8,18 @@ def get_connection():
     port = int(os.getenv("MYSQLPORT") or os.getenv("DB_PORT") or 3306)
     user = os.getenv("MYSQLUSER") or os.getenv("DB_USER")
     password = os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD")
-    database = os.getenv("MYSQLDATABASE") or os.getenv("DB_NAME")
+
+    # 👇 AQUÍ ESTABA EL BUG
+    database = (
+        os.getenv("MYSQL_DATABASE")  # Railway
+        or os.getenv("MYSQLDATABASE") # fallback
+        or os.getenv("DB_NAME")
+    )
 
     if not all([host, user, password, database]):
-        raise RuntimeError("Faltan variables MySQL (MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE)")
+        raise RuntimeError(
+            "Faltan variables MySQL (MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQL_DATABASE)"
+        )
 
     return pymysql.connect(
         host=host,
