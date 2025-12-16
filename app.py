@@ -1,17 +1,17 @@
-import logging
-from flask import Flask
-from flask_cors import CORS
+import faulthandler
+import sys
+import time
 
-#from auth.auth_routes import auth
-#from registro.registro_routes import registro
+# 🔥 Esto hará que si se cuelga, imprima el stack trace en logs
+faulthandler.enable()
+faulthandler.dump_traceback_later(25, repeat=True, file=sys.stderr)
 
-# 👇 IMPORT LOCAL DIRECTO (CLAVE)
 from flask import Flask
 
 def create_app():
     app = Flask(__name__)
 
-    @app.route("/")
+    @app.get("/")
     def home():
         return {"msg": "Servidor funcionando ✔"}
 
