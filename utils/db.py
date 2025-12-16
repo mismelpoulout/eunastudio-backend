@@ -1,32 +1,25 @@
 # utils/db.py
 import os
-import pymysql
-from pymysql.cursors import DictCursor
+import mysql.connector
+from mysql.connector import Error
 
 def get_connection():
-    host = os.getenv("MYSQLHOST") or os.getenv("DB_HOST")
-    port = int(os.getenv("MYSQLPORT") or os.getenv("DB_PORT") or 3306)
-    user = os.getenv("MYSQLUSER") or os.getenv("DB_USER")
-    password = os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD")
-
-    # 👇 AQUÍ ESTABA EL BUG
-    database = (
-        os.getenv("MYSQL_DATABASE")  # Railway
-        or os.getenv("MYSQLDATABASE") # fallback
-        or os.getenv("DB_NAME")
-    )
+    host = os.getenv("MYSQLHOST")
+    port = int(os.getenv("MYSQLPORT", 3306))
+    user = os.getenv("MYSQLUSER")
+    password = os.getenv("MYSQLPASSWORD")
+    database = os.getenv("MYSQLDATABASE")
 
     if not all([host, user, password, database]):
         raise RuntimeError(
-            "Faltan variables MySQL (MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQL_DATABASE)"
+            "Faltan variables MySQL (MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE)"
         )
 
-    return pymysql.connect(
+    return mysql.connector.connect(
         host=host,
         port=port,
         user=user,
         password=password,
         database=database,
-        cursorclass=DictCursor,
-        autocommit=True,
+        autocommit=True
     )
