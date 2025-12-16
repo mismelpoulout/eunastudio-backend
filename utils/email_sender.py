@@ -2,16 +2,15 @@ import smtplib
 from email.message import EmailMessage
 import os
 
-
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-SMTP_FROM = os.getenv("SMTP_FROM")
 
+SMTP_FROM = SMTP_USER  # 🔥 obligatorio con Gmail
 
 def send_verification_email(to_email: str, code: str) -> bool:
-    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM]):
+    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD]):
         print("⚠️ Variables SMTP no configuradas correctamente")
         return False
 
@@ -26,10 +25,6 @@ Hola,
 Gracias por registrarte en Eunastudio.
 
 Tu código de verificación es: {code}
-
-Cópialo y pégalo en la pantalla de verificación de la app/web.
-
-Si no fuiste tú quien registró esta cuenta, puedes ignorar este mensaje.
 
 Saludos,
 Eunastudio
