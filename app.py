@@ -5,10 +5,7 @@ from flask_cors import CORS
 
 from auth.auth_routes import auth
 from registro.registro_routes import registro
-
 from routes.test_email import test_email
-
-app.register_blueprint(test_email)
 
 # 🔴 ACTIVAR LOGS DE ERROR REALES
 logging.basicConfig(level=logging.DEBUG)
@@ -23,9 +20,10 @@ def create_app():
     # CORS
     CORS(app, resources={r"/*": {"origins": "*"}})
 
-    # Blueprints
+    # ✅ REGISTRAR BLUEPRINTS AQUÍ (ORDEN CORRECTO)
     app.register_blueprint(auth, url_prefix="/auth")
     app.register_blueprint(registro, url_prefix="/registro")
+    app.register_blueprint(test_email)  # 👈 AQUÍ
 
     @app.get("/")
     def home():
