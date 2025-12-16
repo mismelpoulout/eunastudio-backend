@@ -18,12 +18,7 @@ def create_app():
 
     app.register_blueprint(auth, url_prefix="/auth")
     app.register_blueprint(registro, url_prefix="/registro")
-    app.register_blueprint(test_email)  # /test-email
-
-    # ✅ útil para verificar qué rutas existen en PROD
-    @app.get("/__routes")
-    def routes_dump():
-        return {"routes": [str(r) for r in app.url_map.iter_rules()]}
+    app.register_blueprint(test_email)  # 👈 SIN prefijo
 
     @app.get("/")
     def home():
