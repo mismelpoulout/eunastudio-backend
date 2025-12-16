@@ -1,5 +1,5 @@
 from app import app
 
-app = create_app()
+application = app
 
 print("✅ WSGI cargado. Rutas:", app.url_map)

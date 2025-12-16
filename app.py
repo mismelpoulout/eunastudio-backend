@@ -1,17 +1,11 @@
-import faulthandler
-import sys
-import time
-
-# 🔥 Esto hará que si se cuelga, imprima el stack trace en logs
-faulthandler.enable()
-faulthandler.dump_traceback_later(25, repeat=True, file=sys.stderr)
-
 from flask import Flask
+from flask_cors import CORS
 
 def create_app():
     app = Flask(__name__)
+    CORS(app)
 
-    @app.get("/")
+    @app.route("/")
     def home():
         return {"msg": "Servidor funcionando ✔"}
 
