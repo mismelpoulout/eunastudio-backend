@@ -7,26 +7,21 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-SMTP_FROM = SMTP_USER  # 🔥 obligatorio con Gmail
-
 def send_verification_email(to_email: str, code: str) -> bool:
-    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD]):
-        print("⚠️ Variables SMTP no configuradas correctamente")
+    if not SMTP_USER or not SMTP_PASSWORD:
+        print("⚠️ Variables SMTP no configuradas")
         return False
 
     msg = EmailMessage()
     msg["Subject"] = "Verifica tu cuenta en Eunastudio"
-    msg["From"] = SMTP_FROM
+    msg["From"] = SMTP_USER
     msg["To"] = to_email
 
     msg.set_content(f"""
 Hola,
 
-Gracias por registrarte en Eunastudio.
-
 Tu código de verificación es: {code}
 
-Saludos,
 Eunastudio
 """)
 
@@ -36,9 +31,9 @@ Eunastudio
             smtp.login(SMTP_USER, SMTP_PASSWORD)
             smtp.send_message(msg)
 
-        print(f"✅ Email enviado a {to_email}")
+        print("✅ Email enviado")
         return True
 
     except Exception as e:
-        print("❌ ERROR ENVIANDO EMAIL:", e)
+        print("❌ ERROR SMTP:", e)
         return False

@@ -3,7 +3,7 @@ from utils.email_sender import send_verification_email
 
 test_email = Blueprint("test_email", __name__)
 
-@test_email.get("/test-email")
+@test_email.route("/test-email", methods=["GET"])
 def test_email_endpoint():
     ok = send_verification_email(
         "medstudioparato2@gmail.com",
