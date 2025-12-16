@@ -4,7 +4,7 @@ from flask_cors import CORS
 
 from auth.auth_routes import auth
 from registro.registro_routes import registro
-from routes.test_email import test_email
+from .routes.test_email import test_email
 
 logging.basicConfig(level=logging.DEBUG)
 
