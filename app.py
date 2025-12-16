@@ -4,21 +4,18 @@ from flask_cors import CORS
 
 from auth.auth_routes import auth
 from registro.registro_routes import registro
-from routes.test_email import test_email   # ✅ IMPORT ABSOLUTO
+from routes.test_email import test_email  # ✅ correcto
 
 logging.basicConfig(level=logging.DEBUG)
 
 def create_app():
     app = Flask(__name__)
 
-    # Debug explícito
     app.config["DEBUG"] = True
     app.config["PROPAGATE_EXCEPTIONS"] = True
 
-    # CORS
     CORS(app, resources={r"/*": {"origins": "*"}})
 
-    # Blueprints
     app.register_blueprint(auth, url_prefix="/auth")
     app.register_blueprint(registro, url_prefix="/registro")
     app.register_blueprint(test_email)  # /test-email
@@ -29,5 +26,4 @@ def create_app():
 
     return app
 
-# Gunicorn entrypoint
 app = create_app()
