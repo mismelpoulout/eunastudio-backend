@@ -1,5 +1,5 @@
 import logging
-from flask import Flask
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from auth.auth_routes import auth
@@ -11,20 +11,27 @@ logging.basicConfig(level=logging.INFO)
 def create_app():
     app = Flask(__name__)
 
-    # 🔥 CORS GLOBAL
+    # 🔥 CORS GLOBAL REAL
     CORS(
         app,
-        resources={r"/*": {"origins": "*"}},
+        origins="*",
         allow_headers=["Content-Type", "Authorization"],
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        max_age=3600,
+        supports_credentials=False,
     )
 
-    # 🔥 CORS EXPLÍCITO EN BLUEPRINTS (CLAVE)
-    CORS(auth)
-    CORS(totp_bp)
-    CORS(registro)
+    # 🔥 INTERCEPTAR PREFLIGHT ANTES DE TODO
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = jsonify({"msg": "OK"})
+            response.status_code = 200
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            return response
 
+    # Blueprints
     app.register_blueprint(auth, url_prefix="/auth")
     app.register_blueprint(totp_bp, url_prefix="/auth")
     app.register_blueprint(registro, url_prefix="/registro")
