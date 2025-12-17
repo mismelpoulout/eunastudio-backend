@@ -1,9 +1,7 @@
 flask
 flask-cors
 gunicorn
-
 mysql-connector-python
-
+werkzeug
 pyotp
 qrcode[pil]
-Pillow

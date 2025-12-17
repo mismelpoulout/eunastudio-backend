@@ -11,7 +11,7 @@ def login():
 
     email = data.get("email", "").lower()
     password = data.get("password", "")
-    code = data.get("code")  # opcional
+    code = data.get("code")
 
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
@@ -22,7 +22,7 @@ def login():
     if not user or not check_password_hash(user["password_hash"], password):
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
-    if user.get("totp_enabled"):
+    if user["totp_enabled"]:
         if not code or not verify_totp(user["totp_secret"], code):
             return jsonify({"msg": "Código 2FA inválido"}), 401
 
