@@ -6,7 +6,12 @@ from auth.auth_routes import auth
 from auth.totp_routes import totp_bp
 from registro.registro_routes import registro
 
+from auth.password_routes import password_bp
+
+
 logging.basicConfig(level=logging.INFO)
+app.register_blueprint(password_bp, url_prefix="/auth")
+
 
 def create_app():
     app = Flask(__name__)
