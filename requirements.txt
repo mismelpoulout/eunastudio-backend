@@ -1,5 +1,7 @@
 flask
 flask-cors
+flask-jwt-extended
+flask-limiter 
 gunicorn
 mysql-connector-python
 werkzeug

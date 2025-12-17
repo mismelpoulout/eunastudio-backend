@@ -1,31 +1,53 @@
 from flask import Blueprint, request, jsonify
 from werkzeug.security import check_password_hash
+from flask_jwt_extended import create_access_token
+from datetime import timedelta
+
 from utils.db import get_connection
 from utils.totp import verify_totp
-from utils.limiter import limiter   # 👈 IMPORTAR
+from utils.limiter import limiter
 
 auth = Blueprint("auth", __name__)
 
 @auth.post("/login")
-@limiter.limit("5 per minute")   # ✅ ahora funciona
+@limiter.limit("5 per minute")
 def login():
     data = request.json or {}
 
-    email = data.get("email", "").lower()
-    password = data.get("password", "")
-    code = data.get("code")
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    code = (data.get("code") or "").strip()
 
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    cur.execute("SELECT * FROM users WHERE email=%s", (email,))
+    cur.execute("""
+        SELECT id, email, password_hash, totp_enabled, totp_secret, blocked
+        FROM users
+        WHERE email = %s
+        LIMIT 1
+    """, (email,))
     user = cur.fetchone()
 
     if not user or not check_password_hash(user["password_hash"], password):
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
+    if user.get("blocked"):
+        return jsonify({"msg": "Usuario bloqueado"}), 403
+
+    # 🔐 Verificar 2FA si está activado
     if user["totp_enabled"]:
         if not code or not verify_totp(user["totp_secret"], code):
             return jsonify({"msg": "Código 2FA inválido"}), 401
 
-    return jsonify({"msg": "Login OK"}), 200
+    # 🎟️ Crear JWT (persistente)
+    access_token = create_access_token(
+        identity=user["id"],
+        expires_delta=timedelta(days=7)  # 👈 sesión persistente
+    )
+
+    return jsonify({
+        "msg": "Login OK",
+        "token": access_token,
+        "email": user["email"]
+    }), 200
