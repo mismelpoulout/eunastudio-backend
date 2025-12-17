@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instalar dependencias del sistema (MySQL)
+# Dependencias del sistema necesarias para mysql-connector-python
 RUN apt-get update && apt-get install -y \
     build-essential \
     default-libmysqlclient-dev \
@@ -11,10 +11,14 @@ RUN apt-get update && apt-get install -y \
 # Copiar requirements
 COPY requirements.txt .
 
+# Instalar dependencias Python
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el resto del proyecto
 COPY . .
 
-# Railway expone PORT
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080"]
+# Puerto fijo (Railway lo redirige)
+EXPOSE 8080
+
+# 🚀 USAR WSGI CORRECTAMENTE
+CMD ["gunicorn", "wsgi:app", "--bind", "0.0.0.0:8080"]
