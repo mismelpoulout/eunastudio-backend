@@ -3,18 +3,21 @@ from flask import Flask
 from flask_cors import CORS
 
 from auth.auth_routes import auth
-from auth.twofa_routes import twofa
+from auth.totp_routes import totp_bp
 from registro.registro_routes import registro
 
+# Logs claros pero sin ruido excesivo
 logging.basicConfig(level=logging.INFO)
 
 def create_app():
     app = Flask(__name__)
 
+    # CORS (puedes restringir luego)
     CORS(app, resources={r"/*": {"origins": "*"}})
 
+    # Blueprints
     app.register_blueprint(auth, url_prefix="/auth")
-    app.register_blueprint(twofa, url_prefix="/auth/2fa")
+    app.register_blueprint(totp_bp, url_prefix="/auth")
     app.register_blueprint(registro, url_prefix="/registro")
 
     @app.get("/")
@@ -23,4 +26,6 @@ def create_app():
 
     return app
 
+
+# Gunicorn entrypoint
 app = create_app()
