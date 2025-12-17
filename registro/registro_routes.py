@@ -5,12 +5,10 @@ from utils.email_sender import send_verification_email
 from utils.db import get_connection
 import uuid
 import random
+import traceback
 
 registro = Blueprint("registro", __name__)
 
-# ------------------------------------------------------------
-#               REGISTRO DE USUARIO (MySQL)
-# ------------------------------------------------------------
 @registro.post("/signup")
 def signup_user():
     data = request.json or {}
@@ -39,7 +37,7 @@ def signup_user():
         conn = get_connection()
         cur = conn.cursor(dictionary=True)
 
-        # ---------------- USUARIO EXISTENTE ----------------
+        # --------- USUARIO EXISTENTE ---------
         cur.execute(
             "SELECT id, is_verified FROM users WHERE email = %s",
             (email,)
@@ -58,7 +56,7 @@ def signup_user():
                 "action": "email_exists"
             }), 400
 
-        # ---------------- CREAR USUARIO ----------------
+        # --------- CREAR USUARIO ---------
         user_id = str(uuid.uuid4())
         verification_code = str(random.randint(100000, 999999))
         password_hash = generate_password_hash(password)
@@ -92,15 +90,18 @@ def signup_user():
             None
         ))
 
-        # ---------------- ENVIAR EMAIL ----------------
+        # ✅ COMMIT OBLIGATORIO
+        conn.commit()
+
+        # --------- ENVIAR EMAIL ---------
         email_sent = send_verification_email(email, verification_code)
 
         if not email_sent:
             print("⚠️ Email de verificación no enviado")
             return jsonify({
-                "msg": "La cuenta fue creada, pero no se pudo enviar el correo de verificación.",
+                "msg": "Cuenta creada, pero no se pudo enviar el correo de verificación.",
                 "action": "email_failed"
-            }), 500
+            }), 201  # 👈 sigue siendo éxito
 
         print("✅ Usuario creado correctamente")
 
@@ -109,9 +110,15 @@ def signup_user():
         }), 201
 
     except Exception as e:
-        print("❌ ERROR REGISTRO:", str(e))
+        if conn:
+            conn.rollback()
+
+        print("❌ ERROR REGISTRO")
+        print(traceback.format_exc())
+
         return jsonify({
-            "msg": "Error interno del servidor"
+            "msg": "Error interno del servidor",
+            "error": str(e)
         }), 500
 
     finally:
