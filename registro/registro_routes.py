@@ -3,6 +3,9 @@ from werkzeug.security import generate_password_hash
 from utils.db import get_connection
 from utils.totp import generate_totp_secret, get_totp_uri
 import uuid
+import qrcode
+import io
+import base64
 
 registro = Blueprint("registro", __name__)
 
@@ -27,7 +30,7 @@ def signup():
 
     # 🔐 Generar TOTP
     totp_secret = generate_totp_secret()
-    totp_uri = get_totp_uri(totp_secret, email)
+    otpauth_uri = get_totp_uri(totp_secret, email)
 
     user_id = str(uuid.uuid4())
 
@@ -51,9 +54,18 @@ def signup():
         totp_secret
     ))
 
+    conn.commit()
+
+    # 🧾 Generar QR en base64
+    qr = qrcode.make(otpauth_uri)
+    buffer = io.BytesIO()
+    qr.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
     return jsonify({
-        "msg": "Usuario creado",
+        "msg": "Usuario creado. Escanea el QR para activar 2FA.",
         "user_id": user_id,
-        "totp_uri": totp_uri,
+        "qr_base64": qr_base64,
+        "otpauth_uri": otpauth_uri,
         "twofa_enabled": False
     }), 201

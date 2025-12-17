@@ -6,3 +6,4 @@ werkzeug
 pyotp
 qrcode[pil]
 flask-limiter
+Pillow
