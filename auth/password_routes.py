@@ -2,10 +2,11 @@ from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 from utils.db import get_connection
 from utils.totp import verify_totp
-import uuid, hashlib
+from utils.limiter import limiter   # ✅ IMPORTAR limiter GLOBAL
+
+import uuid
+import hashlib
 from datetime import datetime, timedelta
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 
 password_bp = Blueprint("password", __name__)
 
@@ -13,7 +14,7 @@ password_bp = Blueprint("password", __name__)
 # 1️⃣ VERIFICAR IDENTIDAD CON GOOGLE AUTHENTICATOR
 # ─────────────────────────────────────────────
 @password_bp.post("/recover/verify")
-@limiter.limit("5 per minute")
+@limiter.limit("5 per minute")   # ✅ ahora sí existe
 def verify_recovery():
     data = request.json or {}
 
@@ -52,6 +53,7 @@ def verify_recovery():
             "action": "invalid_totp"
         }), 401
 
+    # 🔐 Crear token seguro
     raw_token = str(uuid.uuid4())
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     expires_at = datetime.utcnow() + timedelta(minutes=5)

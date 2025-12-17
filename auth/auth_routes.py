@@ -2,18 +2,17 @@ from flask import Blueprint, request, jsonify
 from werkzeug.security import check_password_hash
 from utils.db import get_connection
 from utils.totp import verify_totp
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from utils.limiter import limiter   # 👈 IMPORTAR
 
 auth = Blueprint("auth", __name__)
 
 @auth.post("/login")
-@limiter.limit("5 per minute")
+@limiter.limit("5 per minute")   # ✅ ahora funciona
 def login():
     data = request.json or {}
 
-    email = (data.get("email") or "").lower()
-    password = data.get("password") or ""
+    email = data.get("email", "").lower()
+    password = data.get("password", "")
     code = data.get("code")
 
     conn = get_connection()
