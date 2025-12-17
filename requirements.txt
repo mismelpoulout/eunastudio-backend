@@ -10,3 +10,5 @@ passlib==1.7.4
 
 pyotp==2.9.0
 qrcode[pil]==7.4.2
+
+mysql-connector-python==8.3.0
