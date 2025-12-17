@@ -11,9 +11,11 @@ def get_connection():
     password = os.getenv("MYSQLPASSWORD")
     database = os.getenv("MYSQLDATABASE")
 
+    # Validación temprana (muy importante en Railway)
     if not all([host, user, password, database]):
         raise RuntimeError(
-            "❌ Faltan variables MySQL (MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE)"
+            "❌ Faltan variables MySQL: "
+            "MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE"
         )
 
     try:
@@ -28,10 +30,10 @@ def get_connection():
         )
 
         if not conn.is_connected():
-            raise RuntimeError("❌ No se pudo conectar a MySQL")
+            raise RuntimeError("❌ Conexión MySQL creada pero no activa")
 
         return conn
 
     except Error as e:
-        print("❌ ERROR MySQL:", e)
+        print("❌ ERROR MySQL:", str(e))
         raise
