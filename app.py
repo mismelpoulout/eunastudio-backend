@@ -3,44 +3,34 @@ import os
 from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from datetime import timedelta
 
+# ✅ IMPORTS MÍNIMOS (sin los que causan crash)
 from utils.limiter import limiter
-from admin.promo_routes import promo_bp
-from auth.auth_routes import auth
-from auth.totp_routes import totp_bp
-from auth.password_routes import password_bp
-from registro.registro_routes import registro
-
-from payments.promo_routes import promo_bp
-from payments.flow_routes import flow_bp
+from auth.auth_routes import auth  # ← SOLO ESTE para /auth/user/status
 
 logging.basicConfig(level=logging.INFO)
-
 
 def create_app():
     app = Flask(__name__)
 
     # --------------------------------------------------
-    # 🔐 CONFIG JWT (PERSISTENCIA DE SESIÓN)
+    # 🔐 CONFIG JWT (7 DÍAS - NO False)
     # --------------------------------------------------
     app.config["JWT_SECRET_KEY"] = os.environ.get(
         "JWT_SECRET_KEY", "dev-secret-no-usar-en-prod"
     )
-
-
-    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False
-    # 👆 el token NO expira automáticamente (persistencia total)
-    # si prefieres expiración: timedelta(days=7)
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)  # ✅ FIJADO
 
     jwt = JWTManager(app)
 
     # --------------------------------------------------
-    # 🌍 CORS GLOBAL
+    # 🌍 CORS LOCALHOST (ESPECÍFICO)
     # --------------------------------------------------
     CORS(
         app,
-        resources={r"/*": {"origins": "*"}},
-        supports_credentials=False,
+        origins=["http://localhost:3000"],  # ✅ NO "*"
+        supports_credentials=True  # ✅ CRÍTICO
     )
 
     # --------------------------------------------------
@@ -49,25 +39,22 @@ def create_app():
     limiter.init_app(app)
 
     # --------------------------------------------------
-    # 🧩 BLUEPRINTS
+    # 🧩 SOLO AUTH (lo esencial para sesión)
     # --------------------------------------------------
-    app.register_blueprint(auth, url_prefix="/auth")
-    app.register_blueprint(totp_bp, url_prefix="/auth")
-    app.register_blueprint(password_bp, url_prefix="/auth")
-    app.register_blueprint(registro, url_prefix="/registro")
-    app.register_blueprint(promo_bp, url_prefix="/payments")
-    app.register_blueprint(flow_bp, url_prefix="/payments")
-    app.register_blueprint(promo_bp)
+    app.register_blueprint(auth, url_prefix="/auth")  # ✅ /auth/user/status
 
     # --------------------------------------------------
-    # ❤️ HEALTH CHECK
+    # ❤️ HEALTH CHECKS
     # --------------------------------------------------
-    @app.get("/")
+    @app.route("/")
     def home():
-        return {"msg": "EunaStudio Backend OK"}
+        return {"msg": "EunaStudio Backend OK ✅"}
+
+    @app.route("/health")
+    def health():
+        return {"status": "healthy", "auth": "ready"}
 
     return app
 
-
-# 🔥 ENTRYPOINT (Gunicorn / local)
+# 🔥 ENTRYPOINT
 app = create_app()
