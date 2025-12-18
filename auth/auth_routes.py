@@ -112,12 +112,15 @@ def login():
 
 
 # ==================================================
-# 🔍 STATUS DEL USUARIO (FRONTEND ESCUCHA AQUÍ)
+# 🔍 STATUS DEL USUARIO (FRONTEND)
 # ==================================================
 @auth.get("/user/status")
 @jwt_required()
 def user_status():
     identity = get_jwt_identity()
+
+    if not identity or "user_id" not in identity:
+        return jsonify({"msg": "Token inválido"}), 401
 
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
@@ -128,7 +131,11 @@ def user_status():
         WHERE id = %s
         LIMIT 1
     """, (identity["user_id"],))
+
     user = cur.fetchone()
+
+    if not user:
+        return jsonify({"msg": "Usuario no encontrado"}), 404
 
     return jsonify({
         "role": user["role"],
