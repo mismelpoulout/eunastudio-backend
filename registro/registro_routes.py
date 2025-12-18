@@ -1,7 +1,10 @@
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
+from datetime import datetime, timedelta
+
 from utils.db import get_connection
 from utils.totp import generate_totp_secret, get_totp_uri
+
 import uuid
 import qrcode
 import io
@@ -13,50 +16,72 @@ registro = Blueprint("registro", __name__)
 def signup():
     data = request.json or {}
 
-    email = data.get("email", "").strip().lower()
-    password = data.get("password", "")
-    name = data.get("name", "").strip()
+    username = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
 
-    if not email or not password or not name:
+    if not username or not email or not password:
         return jsonify({"msg": "Datos incompletos"}), 400
 
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    # 🔍 Verificar si ya existe
-    cur.execute("SELECT id FROM users WHERE email=%s", (email,))
+    # 🔍 Verificar si el email ya existe
+    cur.execute("SELECT id FROM users WHERE email = %s", (email,))
     if cur.fetchone():
-        return jsonify({"msg": "Email ya registrado"}), 400
+        return jsonify({"msg": "Email ya registrado"}), 409
 
-    # 🔐 Generar TOTP
+    # 🔐 Password hash
+    password_hash = generate_password_hash(password)
+
+    # 🔐 Generar TOTP (pero NO activar todavía)
     totp_secret = generate_totp_secret()
     otpauth_uri = get_totp_uri(totp_secret, email)
 
+    # ⏳ Trial 72 horas
+    trial_expires = datetime.utcnow() + timedelta(hours=72)
+
     user_id = str(uuid.uuid4())
 
-    # 💾 Guardar usuario (2FA aún desactivado)
+    # 💾 Insertar usuario
     cur.execute("""
         INSERT INTO users (
             id,
+            username,
             email,
-            name,
             password_hash,
+            role,
+            plan,
+            plan_expires_at,
             totp_secret,
             totp_enabled,
+            is_blocked,
             created_at
+        ) VALUES (
+            %s,
+            %s,
+            %s,
+            %s,
+            'user',
+            'trial',
+            %s,
+            %s,
+            0,
+            0,
+            NOW()
         )
-        VALUES (%s,%s,%s,%s,%s,0,NOW())
     """, (
         user_id,
+        username,
         email,
-        name,
-        generate_password_hash(password),
+        password_hash,
+        trial_expires,
         totp_secret
     ))
 
     conn.commit()
 
-    # 🧾 Generar QR en base64
+    # 🧾 Generar QR (base64)
     qr = qrcode.make(otpauth_uri)
     buffer = io.BytesIO()
     qr.save(buffer, format="PNG")
@@ -67,5 +92,7 @@ def signup():
         "user_id": user_id,
         "qr_base64": qr_base64,
         "otpauth_uri": otpauth_uri,
-        "twofa_enabled": False
+        "twofa_enabled": False,
+        "plan": "trial",
+        "plan_expires_at": trial_expires.isoformat()
     }), 201
