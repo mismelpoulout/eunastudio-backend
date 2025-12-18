@@ -55,32 +55,27 @@ def login():
     if not user or not check_password_hash(user["password_hash"], password):
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
-    # --------------------------------------------------
-    # 👑 ADMIN → acceso total (ignora planes/bloqueos)
-    # --------------------------------------------------
-    if user["role"] == "admin":
-        return _login_success(user)
-
+    is_admin = user["role"] == "admin"
     now = datetime.utcnow()
     blocked = False
 
     # --------------------------------------------------
-    # ⏳ TRIAL (72 horas)
+    # ⏳ TRIAL (solo NO admin)
     # --------------------------------------------------
-    if user["plan"] == "trial":
+    if not is_admin and user["plan"] == "trial":
         trial_end = user["created_at"] + timedelta(hours=TRIAL_HOURS)
         if now > trial_end:
             blocked = True
 
     # --------------------------------------------------
-    # 💳 PLAN PAGADO
+    # 💳 PLAN PAGADO (solo NO admin)
     # --------------------------------------------------
-    if user["plan"] in ("monthly", "quarterly"):
+    if not is_admin and user["plan"] in ("monthly", "quarterly"):
         if not user["plan_expires_at"] or now > user["plan_expires_at"]:
             blocked = True
 
     # --------------------------------------------------
-    # 🚫 BLOQUEO AUTOMÁTICO (persistente)
+    # 🚫 BLOQUEO AUTOMÁTICO
     # --------------------------------------------------
     if blocked:
         if not user["is_blocked"]:
@@ -96,7 +91,7 @@ def login():
         }), 403
 
     # --------------------------------------------------
-    # 🔐 2FA (solo si el usuario NO está bloqueado)
+    # 🔐 2FA — SIEMPRE si está habilitado (admin incluido)
     # --------------------------------------------------
     if user["totp_enabled"]:
         if not code or not verify_totp(user["totp_secret"], code):
@@ -106,7 +101,7 @@ def login():
             }), 401
 
     # --------------------------------------------------
-    # ✅ LOGIN OK
+    # ✅ LOGIN OK (único punto de salida)
     # --------------------------------------------------
     return _login_success(user)
 
@@ -153,7 +148,7 @@ def _login_success(user):
             "user_id": user["id"],
             "role": user["role"]
         },
-        expires_delta=timedelta(days=7)  # ✅ sesión persistente
+        expires_delta=timedelta(days=7)
     )
 
     return jsonify({
