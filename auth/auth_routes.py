@@ -22,7 +22,7 @@ def login():
     cur = conn.cursor(dictionary=True)
 
     cur.execute("""
-        SELECT id, email, password_hash, totp_enabled, totp_secret, blocked
+        SELECT id, email, password_hash, totp_enabled, totp_secret, is_blocked
         FROM users
         WHERE email = %s
         LIMIT 1
