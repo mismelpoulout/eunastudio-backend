@@ -12,5 +12,13 @@ def get_totp_uri(secret: str, email: str, issuer: str = "EunaStudio") -> str:
 def verify_totp(secret: str, code: str) -> bool:
     if not secret or not code:
         return False
+
+    code = code.strip()
+
+    if not code.isdigit() or len(code) != 6:
+        return False
+
     totp = pyotp.TOTP(secret)
-    return totp.verify(code, valid_window=1)
+
+    # ⏱️ tolerancia segura para producción
+    return totp.verify(code, valid_window=2)
