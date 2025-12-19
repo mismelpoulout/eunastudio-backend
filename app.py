@@ -19,6 +19,10 @@ from registro.registro_routes import registro
 
 # 📊 HISTORY
 from routes.history import history
+from utils.db_init import init_comments_table
+from routes.comments import comments
+
+init_comments_table()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -56,6 +60,7 @@ def create_app():
     app.register_blueprint(totp_bp, url_prefix="/auth")   # ✅ CLAVE
     app.register_blueprint(registro, url_prefix="/registro")
     app.register_blueprint(history, url_prefix="/history")
+    app.register_blueprint(comments, url_prefix="/comments")
 
     # --------------------------------------------------
     # ❤️ HEALTH
