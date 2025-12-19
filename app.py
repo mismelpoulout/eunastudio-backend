@@ -11,7 +11,10 @@ from utils.limiter import limiter
 # 🔐 AUTH
 from auth.auth_routes import auth
 
-# 📝 REGISTRO (IMPORT CORRECTO)
+# 🔐 2FA / TOTP  ✅ IMPORT CLAVE
+from auth.totp_routes import totp_bp
+
+# 📝 REGISTRO
 from registro.registro_routes import registro
 
 # 📊 HISTORY
@@ -50,6 +53,7 @@ def create_app():
     # 🧩 BLUEPRINTS
     # --------------------------------------------------
     app.register_blueprint(auth, url_prefix="/auth")
+    app.register_blueprint(totp_bp, url_prefix="/auth")   # ✅ CLAVE
     app.register_blueprint(registro, url_prefix="/registro")
     app.register_blueprint(history, url_prefix="/history")
 
