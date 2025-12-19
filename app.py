@@ -11,7 +11,7 @@ from utils.limiter import limiter
 # 🔐 AUTH
 from auth.auth_routes import auth
 
-# 🔐 2FA / TOTP  ✅ IMPORT CLAVE
+# 🔐 2FA / TOTP
 from auth.totp_routes import totp_bp
 
 # 📝 REGISTRO
@@ -19,12 +19,13 @@ from registro.registro_routes import registro
 
 # 📊 HISTORY
 from routes.history import history
-from utils.db_init import init_comments_table
-from routes.comments import comments
 
-init_comments_table()
+# 💬 COMMENTS
+from routes.comments import comments
+from utils.db_init import init_comments_table
 
 logging.basicConfig(level=logging.INFO)
+
 
 def create_app():
     app = Flask(__name__)
@@ -54,10 +55,18 @@ def create_app():
     limiter.init_app(app)
 
     # --------------------------------------------------
+    # 🧩 INIT DB TABLES
+    # --------------------------------------------------
+    try:
+        init_comments_table()
+    except Exception as e:
+        print("❌ ERROR inicializando tabla comments:", e)
+
+    # --------------------------------------------------
     # 🧩 BLUEPRINTS
     # --------------------------------------------------
     app.register_blueprint(auth, url_prefix="/auth")
-    app.register_blueprint(totp_bp, url_prefix="/auth")   # ✅ CLAVE
+    app.register_blueprint(totp_bp, url_prefix="/auth")
     app.register_blueprint(registro, url_prefix="/registro")
     app.register_blueprint(history, url_prefix="/history")
     app.register_blueprint(comments, url_prefix="/comments")
