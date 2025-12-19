@@ -3,17 +3,28 @@ from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 from utils.db import get_connection
 from utils.totp import generate_totp_secret, get_totp_uri
+from utils.limiter import limiter
 
 import uuid
 import qrcode
 import io
 import base64
+import logging
+
+logger = logging.getLogger(__name__)
 
 registro = Blueprint("registro", __name__)
 
 @registro.post("/signup")
+@limiter.limit("5 per minute")  # 🛡️ evita abuso
 def signup():
-    data = request.json or {}
+    # --------------------------------------------------
+    # 📥 INPUT
+    # --------------------------------------------------
+    if not request.is_json:
+        return jsonify({"msg": "Formato JSON inválido"}), 400
+
+    data = request.get_json(silent=True) or {}
 
     username = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
@@ -29,24 +40,34 @@ def signup():
         conn = get_connection()
         cur = conn.cursor(dictionary=True)
 
-        # 🔍 Verificar email existente
+        # --------------------------------------------------
+        # 🔍 EMAIL ÚNICO
+        # --------------------------------------------------
         cur.execute("SELECT id FROM users WHERE email = %s", (email,))
         if cur.fetchone():
             return jsonify({"msg": "Email ya registrado"}), 409
 
-        # 🔐 Password hash
+        # --------------------------------------------------
+        # 🔐 PASSWORD
+        # --------------------------------------------------
         password_hash = generate_password_hash(password)
 
-        # 🔐 TOTP
+        # --------------------------------------------------
+        # 🔐 TOTP (NO ACTIVADO AÚN)
+        # --------------------------------------------------
         totp_secret = generate_totp_secret()
         otpauth_uri = get_totp_uri(totp_secret, email)
 
-        # ⏳ Trial 72 horas
+        # --------------------------------------------------
+        # ⏳ PLAN TRIAL (72H)
+        # --------------------------------------------------
         trial_expires = datetime.utcnow() + timedelta(hours=72)
 
         user_id = str(uuid.uuid4())
 
-        # 💾 Insert
+        # --------------------------------------------------
+        # 💾 INSERT
+        # --------------------------------------------------
         cur.execute("""
             INSERT INTO users (
                 id,
@@ -81,10 +102,12 @@ def signup():
 
         conn.commit()
 
+        logger.info(f"✅ Usuario creado: {email}")
+
     except Exception as e:
         if conn:
             conn.rollback()
-        print("❌ ERROR SIGNUP:", e)
+        logger.exception("❌ ERROR SIGNUP")
         return jsonify({"msg": "Error interno al registrar usuario"}), 500
 
     finally:
@@ -93,12 +116,17 @@ def signup():
         if conn:
             conn.close()
 
-    # 🧾 QR base64
+    # --------------------------------------------------
+    # 🧾 QR BASE64
+    # --------------------------------------------------
     qr = qrcode.make(otpauth_uri)
     buffer = io.BytesIO()
     qr.save(buffer, format="PNG")
     qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
+    # --------------------------------------------------
+    # 📤 RESPONSE
+    # --------------------------------------------------
     return jsonify({
         "msg": "Usuario creado. Escanea el QR para activar 2FA.",
         "user_id": user_id,
