@@ -1,46 +1,52 @@
 from flask import Blueprint, request, jsonify
 from utils.db import get_connection
-from utils.totp import generate_totp_secret, get_totp_uri, verify_totp
+from utils.totp import verify_totp
 
 totp_bp = Blueprint("totp", __name__)
-
-@totp_bp.post("/2fa/setup")
-def setup_2fa():
-    data = request.json or {}
-    email = data.get("email")
-
-    secret = generate_totp_secret()
-    uri = get_totp_uri(secret, email)
-
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        "UPDATE users SET totp_secret=%s WHERE email=%s",
-        (secret, email)
-    )
-
-    return jsonify({"qr_uri": uri})
-
 
 @totp_bp.post("/2fa/verify")
 def verify_2fa():
     data = request.json or {}
-    email = data.get("email")
-    code = data.get("code")
+    email = (data.get("email") or "").strip().lower()
+    code = (data.get("code") or "").strip()
 
-    conn = get_connection()
-    cur = conn.cursor(dictionary=True)
+    if not email or not code:
+        return jsonify({"msg": "Datos incompletos"}), 400
 
-    cur.execute("SELECT totp_secret FROM users WHERE email=%s", (email,))
-    user = cur.fetchone()
-
-    if not user or not verify_totp(user["totp_secret"], code):
+    if not code.isdigit() or len(code) != 6:
         return jsonify({"msg": "Código inválido"}), 400
 
-    cur.execute(
-        "UPDATE users SET totp_enabled=1 WHERE email=%s",
-        (email,)
-    )
+    conn = None
+    cur = None
 
-    return jsonify({"msg": "2FA activado"})
+    try:
+        conn = get_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute(
+            "SELECT totp_secret, totp_enabled FROM users WHERE email=%s",
+            (email,)
+        )
+        user = cur.fetchone()
+
+        if not user or not user["totp_secret"]:
+            return jsonify({"msg": "2FA no configurado"}), 400
+
+        if not verify_totp(user["totp_secret"], code):
+            return jsonify({"msg": "Código inválido"}), 400
+
+        # ✅ Activar 2FA solo si aún no está activo
+        if not user["totp_enabled"]:
+            cur.execute(
+                "UPDATE users SET totp_enabled=1 WHERE email=%s",
+                (email,)
+            )
+            conn.commit()
+
+        return jsonify({"msg": "2FA activado correctamente"}), 200
+
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
