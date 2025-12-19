@@ -1,7 +1,6 @@
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
-
 from utils.db import get_connection
 from utils.totp import generate_totp_secret, get_totp_uri
 
@@ -23,65 +22,78 @@ def signup():
     if not username or not email or not password:
         return jsonify({"msg": "Datos incompletos"}), 400
 
-    conn = get_connection()
-    cur = conn.cursor(dictionary=True)
+    conn = None
+    cur = None
 
-    # 🔍 Verificar si el email ya existe
-    cur.execute("SELECT id FROM users WHERE email = %s", (email,))
-    if cur.fetchone():
-        return jsonify({"msg": "Email ya registrado"}), 409
+    try:
+        conn = get_connection()
+        cur = conn.cursor(dictionary=True)
 
-    # 🔐 Password hash
-    password_hash = generate_password_hash(password)
+        # 🔍 Verificar email existente
+        cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+        if cur.fetchone():
+            return jsonify({"msg": "Email ya registrado"}), 409
 
-    # 🔐 Generar TOTP (pero NO activar todavía)
-    totp_secret = generate_totp_secret()
-    otpauth_uri = get_totp_uri(totp_secret, email)
+        # 🔐 Password hash
+        password_hash = generate_password_hash(password)
 
-    # ⏳ Trial 72 horas
-    trial_expires = datetime.utcnow() + timedelta(hours=72)
+        # 🔐 TOTP
+        totp_secret = generate_totp_secret()
+        otpauth_uri = get_totp_uri(totp_secret, email)
 
-    user_id = str(uuid.uuid4())
+        # ⏳ Trial 72 horas
+        trial_expires = datetime.utcnow() + timedelta(hours=72)
 
-    # 💾 Insertar usuario
-    cur.execute("""
-        INSERT INTO users (
-            id,
+        user_id = str(uuid.uuid4())
+
+        # 💾 Insert
+        cur.execute("""
+            INSERT INTO users (
+                id,
+                username,
+                email,
+                password_hash,
+                role,
+                plan,
+                plan_expires_at,
+                totp_secret,
+                totp_enabled,
+                is_blocked,
+                created_at
+            ) VALUES (
+                %s, %s, %s, %s,
+                'user',
+                'trial',
+                %s,
+                %s,
+                0,
+                0,
+                NOW()
+            )
+        """, (
+            user_id,
             username,
             email,
             password_hash,
-            role,
-            plan,
-            plan_expires_at,
-            totp_secret,
-            totp_enabled,
-            is_blocked,
-            created_at
-        ) VALUES (
-            %s,
-            %s,
-            %s,
-            %s,
-            'user',
-            'trial',
-            %s,
-            %s,
-            0,
-            0,
-            NOW()
-        )
-    """, (
-        user_id,
-        username,
-        email,
-        password_hash,
-        trial_expires,
-        totp_secret
-    ))
+            trial_expires,
+            totp_secret
+        ))
 
-    conn.commit()
+        conn.commit()
 
-    # 🧾 Generar QR (base64)
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print("❌ ERROR SIGNUP:", e)
+        return jsonify({"msg": "Error interno al registrar usuario"}), 500
+
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    # 🧾 QR base64
     qr = qrcode.make(otpauth_uri)
     buffer = io.BytesIO()
     qr.save(buffer, format="PNG")
