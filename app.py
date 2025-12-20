@@ -20,7 +20,7 @@ from registro.registro_routes import registro
 # 📊 HISTORY
 from routes.history import history
 
-
+from timers.time_routes import time_bp
 
 # 🧠 EXAMS (IA)
 from routes.exams import exams_bp
@@ -71,6 +71,7 @@ def create_app():
     app.register_blueprint(registro, url_prefix="/registro")
     app.register_blueprint(history, url_prefix="/history")
     app.register_blueprint(exams_bp, url_prefix="/exam")
+    app.register_blueprint(time_bp, url_prefix="/metrics")
 
     # --------------------------------------------------
     # ❤️ HEALTH
