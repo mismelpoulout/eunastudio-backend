@@ -6,75 +6,75 @@ from utils.limiter import limiter
 
 comments = Blueprint("comments", __name__)
 
-# --------------------------------------------------
-# ➕ Crear comentario (rate-limit SOLO aquí)
-# --------------------------------------------------
+# ==================================================
+# ➕ Crear comentario (JWT + rate limit)
+# ==================================================
 @comments.post("")
 @jwt_required()
 @limiter.limit("5 per minute")
 def create_comment():
-    data = request.get_json(silent=True)
-
-    # -----------------------------
-    # Validación robusta
-    # -----------------------------
-    if not data or "text" not in data:
-        return jsonify({"msg": "text must be a string"}), 400
+    data = request.get_json(silent=True) or {}
 
     text = data.get("text")
 
+    # -----------------------------
+    # Validación estricta
+    # -----------------------------
     if not isinstance(text, str) or not text.strip():
         return jsonify({"msg": "text must be a string"}), 400
 
     text = text.strip()
 
     # -----------------------------
-    # Identidad JWT
+    # JWT Identity (FIJO)
     # -----------------------------
     identity = get_jwt_identity()
 
-    # 👉 Si el JWT guarda solo email
-    if isinstance(identity, str):
-        user_email = identity
-
-        conn = get_connection()
-        cur = conn.cursor(dictionary=True)
-
-        cur.execute(
-            "SELECT id, username, avatar FROM users WHERE email = %s",
-            (user_email,)
-        )
-        user = cur.fetchone()
-
-        if not user:
-            cur.close()
-            conn.close()
-            return jsonify({"msg": "Usuario no encontrado"}), 404
-
-        user_id = user["id"]
-        user_name = user["username"]
-        avatar = user.get("avatar")
-
-    # 👉 Si el JWT guarda un dict completo
-    elif isinstance(identity, dict):
-        user_id = identity.get("id")
-        user_name = identity.get("name")
-        avatar = identity.get("avatar")
-
-    else:
+    if not identity or "user_id" not in identity:
         return jsonify({"msg": "Token inválido"}), 401
+
+    user_id = identity["user_id"]
+
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+
+    # -----------------------------
+    # Obtener datos del usuario
+    # -----------------------------
+    cur.execute(
+        """
+        SELECT username, avatar
+        FROM users
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (user_id,)
+    )
+
+    user = cur.fetchone()
+
+    if not user:
+        cur.close()
+        conn.close()
+        return jsonify({"msg": "Usuario no encontrado"}), 404
+
+    comment_id = str(uuid.uuid4())
 
     # -----------------------------
     # Insert comentario
     # -----------------------------
-    comment_id = str(uuid.uuid4())
-
     cur.execute(
         """
         INSERT INTO comments (id, user_id, user_name, avatar, text)
         VALUES (%s, %s, %s, %s, %s)
         """,
-        (comment_id, user_id, user_name, avatar, text),
+        (
+            comment_id,
+            user_id,
+            user["username"],
+            user.get("avatar"),
+            text,
+        )
     )
 
     conn.commit()
@@ -83,19 +83,19 @@ def create_comment():
 
     return jsonify({
         "id": comment_id,
-        "user_name": user_name,
-        "avatar": avatar,
+        "user_name": user["username"],
+        "avatar": user.get("avatar"),
         "text": text,
     }), 201
 
 
-# --------------------------------------------------
+# ==================================================
 # 📄 Listar comentarios (paginado)
-# --------------------------------------------------
+# ==================================================
 @comments.get("")
 def list_comments():
     page = max(int(request.args.get("page", 1)), 1)
-    limit = 5
+    limit = 6
     offset = (page - 1) * limit
 
     conn = get_connection()
@@ -108,7 +108,7 @@ def list_comments():
         ORDER BY created_at DESC
         LIMIT %s OFFSET %s
         """,
-        (limit, offset),
+        (limit, offset)
     )
 
     rows = cur.fetchall()
