@@ -12,11 +12,12 @@ from utils.totp import verify_totp
 from utils.limiter import limiter
 
 # ==================================================
-# 🔐 DEFINIR BLUEPRINT (ESTO FALTABA O ESTABA MAL)
+# 🔐 BLUEPRINT AUTH
 # ==================================================
 auth = Blueprint("auth", __name__)
 
 TRIAL_HOURS = 72
+
 
 # ==================================================
 # 🔐 LOGIN
@@ -49,8 +50,10 @@ def login():
         WHERE email = %s
         LIMIT 1
     """, (email,))
+
     user = cur.fetchone()
 
+    # ❌ Credenciales inválidas
     if not user or not check_password_hash(user["password_hash"], password):
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
@@ -58,17 +61,18 @@ def login():
     now = datetime.utcnow()
     blocked = False
 
-    # ⏳ TRIAL
+    # ⏳ TRIAL (solo no admin)
     if not is_admin and user["plan"] == "trial":
         trial_end = user["created_at"] + timedelta(hours=TRIAL_HOURS)
         if now > trial_end:
             blocked = True
 
-    # 💳 PLAN PAGADO
+    # 💳 PLAN PAGADO (solo no admin)
     if not is_admin and user["plan"] in ("monthly", "quarterly"):
         if not user["plan_expires_at"] or now > user["plan_expires_at"]:
             blocked = True
 
+    # 🚫 BLOQUEO
     if blocked:
         if not user["is_blocked"]:
             cur.execute(
@@ -91,6 +95,7 @@ def login():
             }), 401
 
     return _login_success(user)
+
 
 # ==================================================
 # 🔍 STATUS USUARIO (FRONTEND)
@@ -123,6 +128,7 @@ def user_status():
         "plan": user["plan"],
         "blocked": bool(user["is_blocked"])
     }), 200
+
 
 # ==================================================
 # 🔑 LOGIN EXITOSO

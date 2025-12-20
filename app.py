@@ -20,9 +20,7 @@ from registro.registro_routes import registro
 # 📊 HISTORY
 from routes.history import history
 
-# 💬 COMMENTS
-from routes.comments import comments
-from utils.db_init import init_comments_table
+
 
 # 🧠 EXAMS (IA)
 from routes.exams import exams_bp
@@ -72,7 +70,6 @@ def create_app():
     app.register_blueprint(totp_bp, url_prefix="/auth")
     app.register_blueprint(registro, url_prefix="/registro")
     app.register_blueprint(history, url_prefix="/history")
-    app.register_blueprint(comments, url_prefix="/comments")
     app.register_blueprint(exams_bp, url_prefix="/exam")
 
     # --------------------------------------------------
