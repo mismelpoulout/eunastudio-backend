@@ -12,7 +12,6 @@ from flask_jwt_extended import (
 from utils.db import get_connection
 from utils.totp import verify_totp
 from utils.limiter import limiter
-from utils.session_guard import check_active_session
 
 # ==================================================
 # 🔐 BLUEPRINT AUTH
@@ -58,24 +57,25 @@ def login():
 
     # ❌ Credenciales inválidas
     if not user or not check_password_hash(user["password_hash"], password):
+        cur.close()
+        conn.close()
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
-    is_admin = user["role"] == "admin"
     now = datetime.utcnow()
     blocked = False
 
     # ⏳ TRIAL
-    if not is_admin and user["plan"] == "trial":
+    if user["role"] != "admin" and user["plan"] == "trial":
         trial_end = user["created_at"] + timedelta(hours=TRIAL_HOURS)
         if now > trial_end:
             blocked = True
 
     # 💳 PLAN PAGADO
-    if not is_admin and user["plan"] in ("monthly", "quarterly"):
+    if user["role"] != "admin" and user["plan"] in ("monthly", "quarterly"):
         if not user["plan_expires_at"] or now > user["plan_expires_at"]:
             blocked = True
 
-    # 🚫 BLOQUEO
+    # 🚫 BLOQUEO DURO
     if blocked:
         if not user["is_blocked"]:
             cur.execute(
@@ -121,14 +121,23 @@ def user_status():
     cur = conn.cursor(dictionary=True)
 
     cur.execute("""
-        SELECT id, role, plan, created_at, plan_expires_at, is_blocked
+        SELECT
+            id,
+            role,
+            plan,
+            created_at,
+            plan_expires_at,
+            is_blocked
         FROM users
         WHERE id = %s
         LIMIT 1
     """, (user_id,))
+
     user = cur.fetchone()
 
     if not user:
+        cur.close()
+        conn.close()
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
     now = datetime.utcnow()
@@ -140,7 +149,7 @@ def user_status():
         if now > trial_end:
             blocked = True
 
-    # 💳 PLAN PAGADO
+    # 💳 PLAN PAGO
     if user["role"] != "admin" and user["plan"] in ("monthly", "quarterly"):
         if not user["plan_expires_at"] or now > user["plan_expires_at"]:
             blocked = True
@@ -170,9 +179,9 @@ def _login_success(user):
     session_id = str(uuid.uuid4())
 
     conn = get_connection()
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor()
 
-    # 🔥 INVALIDA SESIONES ANTERIORES (una sola sesión activa)
+    # 🔥 INVALIDA SESIONES ANTERIORES
     cur.execute("""
         UPDATE users
         SET active_session_id = %s,
@@ -184,7 +193,6 @@ def _login_success(user):
     cur.close()
     conn.close()
 
-    # 🔐 JWT incluye session_id (clave del control)
     access_token = create_access_token(
         identity={
             "user_id": user["id"],
