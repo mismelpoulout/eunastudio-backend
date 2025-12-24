@@ -114,9 +114,6 @@ def login():
 @auth.get("/user/status")
 @jwt_required()
 def user_status():
-    if not check_active_session():
-        return jsonify({"msg": "Sesión inválida"}), 401
-
     identity = get_jwt_identity()
     user_id = identity["user_id"]
 
@@ -124,23 +121,45 @@ def user_status():
     cur = conn.cursor(dictionary=True)
 
     cur.execute("""
-        SELECT role, plan, is_blocked
+        SELECT id, role, plan, created_at, plan_expires_at, is_blocked
         FROM users
         WHERE id = %s
         LIMIT 1
     """, (user_id,))
-
     user = cur.fetchone()
-    cur.close()
-    conn.close()
 
     if not user:
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
+    now = datetime.utcnow()
+    blocked = False
+
+    # ⏳ TRIAL
+    if user["role"] != "admin" and user["plan"] == "trial":
+        trial_end = user["created_at"] + timedelta(hours=TRIAL_HOURS)
+        if now > trial_end:
+            blocked = True
+
+    # 💳 PLAN PAGADO
+    if user["role"] != "admin" and user["plan"] in ("monthly", "quarterly"):
+        if not user["plan_expires_at"] or now > user["plan_expires_at"]:
+            blocked = True
+
+    # 🔒 Persistir bloqueo si cambió
+    if blocked and not user["is_blocked"]:
+        cur.execute(
+            "UPDATE users SET is_blocked = 1 WHERE id = %s",
+            (user["id"],)
+        )
+        conn.commit()
+
+    cur.close()
+    conn.close()
+
     return jsonify({
         "role": user["role"],
         "plan": user["plan"],
-        "blocked": bool(user["is_blocked"])
+        "blocked": blocked
     }), 200
 
 
