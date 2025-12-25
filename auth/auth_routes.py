@@ -121,23 +121,14 @@ def user_status():
     cur = conn.cursor(dictionary=True)
 
     cur.execute("""
-        SELECT
-            id,
-            role,
-            plan,
-            created_at,
-            plan_expires_at,
-            is_blocked
+        SELECT id, role, plan, created_at, plan_expires_at, is_blocked
         FROM users
         WHERE id = %s
         LIMIT 1
     """, (user_id,))
-
     user = cur.fetchone()
 
     if not user:
-        cur.close()
-        conn.close()
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
     now = datetime.utcnow()
@@ -149,16 +140,16 @@ def user_status():
         if now > trial_end:
             blocked = True
 
-    # 💳 PLAN PAGO
+    # 💳 PLAN PAGADO
     if user["role"] != "admin" and user["plan"] in ("monthly", "quarterly"):
         if not user["plan_expires_at"] or now > user["plan_expires_at"]:
             blocked = True
 
-    # 🔒 Persistir bloqueo si cambió
+    # 🔒 Persistir bloqueo en DB
     if blocked and not user["is_blocked"]:
         cur.execute(
             "UPDATE users SET is_blocked = 1 WHERE id = %s",
-            (user["id"],)
+            (user_id,)
         )
         conn.commit()
 
