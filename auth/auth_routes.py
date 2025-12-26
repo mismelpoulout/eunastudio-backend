@@ -75,22 +75,13 @@ def login():
         if not user["plan_expires_at"] or now > user["plan_expires_at"]:
             blocked = True
 
-    # 🚫 BLOQUEO DURO
-    if blocked:
-        if not user["is_blocked"]:
-            cur.execute(
-                "UPDATE users SET is_blocked = 1 WHERE id = %s",
-                (user["id"],)
-            )
-            conn.commit()
-
-        cur.close()
-        conn.close()
-
-        return jsonify({
-            "msg": "Plan vencido o período de prueba finalizado",
-            "blocked": True
-        }), 403
+    # 🔒 Persistir bloqueo (SIN bloquear login)
+    if blocked and not user["is_blocked"]:
+        cur.execute(
+            "UPDATE users SET is_blocked = 1 WHERE id = %s",
+            (user["id"],)
+        )
+        conn.commit()
 
     # 🔐 2FA
     if user["totp_enabled"]:
@@ -106,7 +97,6 @@ def login():
     conn.close()
 
     return _login_success(user)
-
 
 # ==================================================
 # 🔍 STATUS USUARIO (FRONTEND)
