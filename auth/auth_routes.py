@@ -13,9 +13,6 @@ from utils.db import get_connection
 from utils.totp import verify_totp
 from utils.limiter import limiter
 
-# ==================================================
-# 🔐 BLUEPRINT AUTH
-# ==================================================
 auth = Blueprint("auth", __name__)
 
 TRIAL_HOURS = 72
@@ -52,36 +49,12 @@ def login():
         WHERE email = %s
         LIMIT 1
     """, (email,))
-
     user = cur.fetchone()
 
-    # ❌ Credenciales inválidas
     if not user or not check_password_hash(user["password_hash"], password):
         cur.close()
         conn.close()
         return jsonify({"msg": "Credenciales inválidas"}), 401
-
-    now = datetime.utcnow()
-    blocked = False
-
-    # ⏳ TRIAL
-    if user["role"] != "admin" and user["plan"] == "trial":
-        trial_end = user["created_at"] + timedelta(hours=TRIAL_HOURS)
-        if now > trial_end:
-            blocked = True
-
-    # 💳 PLAN PAGADO
-    if user["role"] != "admin" and user["plan"] in ("monthly", "quarterly"):
-        if not user["plan_expires_at"] or now > user["plan_expires_at"]:
-            blocked = True
-
-    # 🔒 Persistir bloqueo (SIN bloquear login)
-    if blocked and not user["is_blocked"]:
-        cur.execute(
-            "UPDATE users SET is_blocked = 1 WHERE id = %s",
-            (user["id"],)
-        )
-        conn.commit()
 
     # 🔐 2FA
     if user["totp_enabled"]:
@@ -93,10 +66,45 @@ def login():
                 "requires_2fa": True
             }), 401
 
+    # ⛔ SOLO persistimos bloqueo, NO bloqueamos login
+    now = datetime.utcnow()
+    blocked = False
+
+    created_at = user.get("created_at")
+    plan_expires_at = user.get("plan_expires_at")
+
+    if isinstance(created_at, str):
+        try:
+            created_at = datetime.fromisoformat(created_at.replace("Z", ""))
+        except Exception:
+            created_at = None
+
+    if isinstance(plan_expires_at, str):
+        try:
+            plan_expires_at = datetime.fromisoformat(plan_expires_at.replace("Z", ""))
+        except Exception:
+            plan_expires_at = None
+
+    if user["role"] != "admin" and user["plan"] == "trial" and created_at:
+        if now > created_at + timedelta(hours=TRIAL_HOURS):
+            blocked = True
+
+    if user["role"] != "admin" and user["plan"] in ("monthly", "quarterly"):
+        if not plan_expires_at or now > plan_expires_at:
+            blocked = True
+
+    if blocked and not user["is_blocked"]:
+        cur.execute(
+            "UPDATE users SET is_blocked = 1 WHERE id = %s",
+            (user["id"],)
+        )
+        conn.commit()
+
     cur.close()
     conn.close()
 
     return _login_success(user)
+
 
 # ==================================================
 # 🔍 STATUS USUARIO (FRONTEND)
@@ -105,7 +113,10 @@ def login():
 @jwt_required()
 def user_status():
     identity = get_jwt_identity()
-    user_id = identity["user_id"]
+    user_id = identity.get("user_id")
+
+    if not user_id:
+        return jsonify({"msg": "Token inválido"}), 401
 
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
@@ -119,23 +130,47 @@ def user_status():
     user = cur.fetchone()
 
     if not user:
+        cur.close()
+        conn.close()
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
     now = datetime.utcnow()
     blocked = False
+    trial_remaining_seconds = None
+    plan_remaining_seconds = None
 
-    # ⏳ TRIAL
-    if user["role"] != "admin" and user["plan"] == "trial":
-        trial_end = user["created_at"] + timedelta(hours=TRIAL_HOURS)
+    is_admin = user["role"] == "admin"
+
+    created_at = user.get("created_at")
+    plan_expires_at = user.get("plan_expires_at")
+
+    if isinstance(created_at, str):
+        try:
+            created_at = datetime.fromisoformat(created_at.replace("Z", ""))
+        except Exception:
+            created_at = None
+
+    if isinstance(plan_expires_at, str):
+        try:
+            plan_expires_at = datetime.fromisoformat(plan_expires_at.replace("Z", ""))
+        except Exception:
+            plan_expires_at = None
+
+    if not is_admin and user["plan"] == "trial" and created_at:
+        trial_end = created_at + timedelta(hours=TRIAL_HOURS)
+        trial_remaining_seconds = max(int((trial_end - now).total_seconds()), 0)
         if now > trial_end:
             blocked = True
 
-    # 💳 PLAN PAGADO
-    if user["role"] != "admin" and user["plan"] in ("monthly", "quarterly"):
-        if not user["plan_expires_at"] or now > user["plan_expires_at"]:
+    if not is_admin and user["plan"] in ("monthly", "quarterly"):
+        if not plan_expires_at:
             blocked = True
+            plan_remaining_seconds = 0
+        else:
+            plan_remaining_seconds = max(int((plan_expires_at - now).total_seconds()), 0)
+            if now > plan_expires_at:
+                blocked = True
 
-    # 🔒 Persistir bloqueo en DB
     if blocked and not user["is_blocked"]:
         cur.execute(
             "UPDATE users SET is_blocked = 1 WHERE id = %s",
@@ -149,8 +184,11 @@ def user_status():
     return jsonify({
         "role": user["role"],
         "plan": user["plan"],
-        "blocked": blocked
+        "blocked": blocked,
+        "trial_remaining_seconds": trial_remaining_seconds,
+        "plan_remaining_seconds": plan_remaining_seconds,
     }), 200
+
 
 # ==================================================
 # 🔑 LOGIN EXITOSO (SESIÓN ÚNICA)
@@ -161,7 +199,6 @@ def _login_success(user):
     conn = get_connection()
     cur = conn.cursor()
 
-    # 🔥 INVALIDA SESIONES ANTERIORES
     cur.execute("""
         UPDATE users
         SET active_session_id = %s,
@@ -187,6 +224,5 @@ def _login_success(user):
         "token": access_token,
         "email": user["email"],
         "role": user["role"],
-        "plan": user["plan"],
-        "blocked": False
+        "plan": user["plan"]
     }), 200
