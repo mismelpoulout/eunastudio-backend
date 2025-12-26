@@ -40,23 +40,22 @@ def login():
             password_hash,
             role,
             plan,
-            plan_expires_at,
-            created_at,
             totp_enabled,
-            totp_secret,
-            is_blocked
+            totp_secret
         FROM users
         WHERE email = %s
         LIMIT 1
     """, (email,))
+
     user = cur.fetchone()
 
+    # ❌ Credenciales inválidas
     if not user or not check_password_hash(user["password_hash"], password):
         cur.close()
         conn.close()
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
-    # 🔐 2FA
+    # 🔐 2FA (solo aquí)
     if user["totp_enabled"]:
         if not code or not verify_totp(user["totp_secret"], code):
             cur.close()
@@ -66,45 +65,11 @@ def login():
                 "requires_2fa": True
             }), 401
 
-    # ⛔ SOLO persistimos bloqueo, NO bloqueamos login
-    now = datetime.utcnow()
-    blocked = False
-
-    created_at = user.get("created_at")
-    plan_expires_at = user.get("plan_expires_at")
-
-    if isinstance(created_at, str):
-        try:
-            created_at = datetime.fromisoformat(created_at.replace("Z", ""))
-        except Exception:
-            created_at = None
-
-    if isinstance(plan_expires_at, str):
-        try:
-            plan_expires_at = datetime.fromisoformat(plan_expires_at.replace("Z", ""))
-        except Exception:
-            plan_expires_at = None
-
-    if user["role"] != "admin" and user["plan"] == "trial" and created_at:
-        if now > created_at + timedelta(hours=TRIAL_HOURS):
-            blocked = True
-
-    if user["role"] != "admin" and user["plan"] in ("monthly", "quarterly"):
-        if not plan_expires_at or now > plan_expires_at:
-            blocked = True
-
-    if blocked and not user["is_blocked"]:
-        cur.execute(
-            "UPDATE users SET is_blocked = 1 WHERE id = %s",
-            (user["id"],)
-        )
-        conn.commit()
-
     cur.close()
     conn.close()
 
+    # ✅ SIEMPRE DEVUELVE TOKEN
     return _login_success(user)
-
 
 # ==================================================
 # 🔍 STATUS USUARIO (FRONTEND)
