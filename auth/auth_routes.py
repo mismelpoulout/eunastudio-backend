@@ -7,12 +7,16 @@ from flask_jwt_extended import (
     create_access_token,
     jwt_required,
     get_jwt_identity,
+    get_jwt,
 )
 
 from utils.db import get_connection
 from utils.totp import verify_totp
 from utils.limiter import limiter
 
+# ==================================================
+# 🔐 BLUEPRINT
+# ==================================================
 auth = Blueprint("auth", __name__)
 
 TRIAL_HOURS = 72
@@ -47,7 +51,6 @@ def login():
         WHERE email = %s
         LIMIT 1
     """, (email,))
-
     user = cur.fetchone()
 
     # ❌ Credenciales inválidas
@@ -56,7 +59,7 @@ def login():
         conn.close()
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
-    # 🔐 2FA (solo aquí)
+    # 🔐 2FA
     if user["totp_enabled"]:
         if not code or not verify_totp(user["totp_secret"], code):
             cur.close()
@@ -79,32 +82,17 @@ def login():
 @auth.get("/user/status")
 @jwt_required()
 def user_status():
-    identity = get_jwt_identity()
+    # 🔥 FIX DEFINITIVO: identity ES SOLO user_id (string)
+    user_id = get_jwt_identity()
+    claims = get_jwt()  # role, session_id, etc.
 
-    # --------------------------------------------------
-    # 🔥 FIX DEFINITIVO JWT (EVITA 422)
-    # Flask-JWT-Extended guarda identity dentro de "sub"
-    # --------------------------------------------------
-    if not identity:
-        return jsonify({"msg": "Token inválido"}), 401
-
-    # Soporta ambas estructuras: plana o anidada
-    if isinstance(identity, dict) and "sub" in identity:
-        identity = identity["sub"]
-
-    if not isinstance(identity, dict):
-        return jsonify({"msg": "Token inválido"}), 401
-
-    user_id = identity.get("user_id")
     if not user_id:
         return jsonify({"msg": "Token inválido"}), 401
 
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    # --------------------------------------------------
     # 🔥 BLOQUEO CALCULADO 100% EN MYSQL (ANTI TIMEZONE)
-    # --------------------------------------------------
     cur.execute(f"""
         SELECT
             id,
@@ -125,33 +113,7 @@ def user_status():
               THEN 1
 
               ELSE 0
-            END AS blocked,
-
-            CASE
-              WHEN role <> 'admin'
-                   AND plan = 'trial'
-                   AND created_at IS NOT NULL
-              THEN GREATEST(
-                   0,
-                   {TRIAL_SECONDS} - TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP())
-              )
-              ELSE NULL
-            END AS trial_remaining_seconds,
-
-            CASE
-              WHEN role <> 'admin'
-                   AND plan IN ('monthly','quarterly')
-                   AND plan_expires_at IS NOT NULL
-              THEN GREATEST(
-                   0,
-                   TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), plan_expires_at)
-              )
-              WHEN role <> 'admin'
-                   AND plan IN ('monthly','quarterly')
-                   AND plan_expires_at IS NULL
-              THEN 0
-              ELSE NULL
-            END AS plan_remaining_seconds
+            END AS blocked
 
         FROM users
         WHERE id = %s
@@ -167,7 +129,7 @@ def user_status():
 
     blocked = bool(user["blocked"])
 
-    # 🔒 Persistir bloqueo solo si cambió
+    # 🔒 Persistir bloqueo si cambió
     if blocked and not user["is_blocked"]:
         cur.execute(
             "UPDATE users SET is_blocked = 1 WHERE id = %s",
@@ -181,14 +143,12 @@ def user_status():
     return jsonify({
         "role": user["role"],
         "plan": user["plan"],
-        "blocked": blocked,
-        "trial_remaining_seconds": user["trial_remaining_seconds"],
-        "plan_remaining_seconds": user["plan_remaining_seconds"],
+        "blocked": blocked
     }), 200
 
 
 # ==================================================
-# 🔑 LOGIN EXITOSO (SESIÓN ÚNICA)
+# 🔑 LOGIN EXITOSO (SESIÓN ÚNICA + JWT CORRECTO)
 # ==================================================
 def _login_success(user):
     session_id = str(uuid.uuid4())
@@ -203,14 +163,15 @@ def _login_success(user):
             last_login_at = UTC_TIMESTAMP()
         WHERE id = %s
     """, (session_id, user["id"]))
-
     conn.commit()
+
     cur.close()
     conn.close()
 
+    # 🔥 JWT CORRECTO (identity SIMPLE + claims)
     access_token = create_access_token(
-        identity={
-            "user_id": user["id"],
+        identity=str(user["id"]),  # ⚠️ SOLO STRING
+        additional_claims={
             "role": user["role"],
             "session_id": session_id
         },
