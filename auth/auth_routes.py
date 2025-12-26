@@ -7,16 +7,12 @@ from flask_jwt_extended import (
     create_access_token,
     jwt_required,
     get_jwt_identity,
-    get_jwt,
 )
 
 from utils.db import get_connection
 from utils.totp import verify_totp
 from utils.limiter import limiter
 
-# ==================================================
-# 🔐 BLUEPRINT
-# ==================================================
 auth = Blueprint("auth", __name__)
 
 TRIAL_HOURS = 72
@@ -53,13 +49,11 @@ def login():
     """, (email,))
     user = cur.fetchone()
 
-    # ❌ Credenciales inválidas
     if not user or not check_password_hash(user["password_hash"], password):
         cur.close()
         conn.close()
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
-    # 🔐 2FA
     if user["totp_enabled"]:
         if not code or not verify_totp(user["totp_secret"], code):
             cur.close()
@@ -72,7 +66,6 @@ def login():
     cur.close()
     conn.close()
 
-    # ✅ SIEMPRE devuelve token (aunque esté bloqueado)
     return _login_success(user)
 
 
@@ -82,17 +75,26 @@ def login():
 @auth.get("/user/status")
 @jwt_required()
 def user_status():
-    # 🔥 FIX DEFINITIVO: identity ES SOLO user_id (string)
-    user_id = get_jwt_identity()
-    claims = get_jwt()  # role, session_id, etc.
+    identity = get_jwt_identity()
 
+    # 🔥 FIX DEFINITIVO 422
+    if not identity:
+        return jsonify({"msg": "Token inválido"}), 401
+
+    # JWT viene en sub
+    if isinstance(identity, dict) and "sub" in identity:
+        identity = identity["sub"]
+
+    if not isinstance(identity, dict):
+        return jsonify({"msg": "Token inválido"}), 401
+
+    user_id = identity.get("user_id")
     if not user_id:
         return jsonify({"msg": "Token inválido"}), 401
 
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    # 🔥 BLOQUEO CALCULADO 100% EN MYSQL (ANTI TIMEZONE)
     cur.execute(f"""
         SELECT
             id,
@@ -129,7 +131,6 @@ def user_status():
 
     blocked = bool(user["blocked"])
 
-    # 🔒 Persistir bloqueo si cambió
     if blocked and not user["is_blocked"]:
         cur.execute(
             "UPDATE users SET is_blocked = 1 WHERE id = %s",
@@ -148,7 +149,7 @@ def user_status():
 
 
 # ==================================================
-# 🔑 LOGIN EXITOSO (SESIÓN ÚNICA + JWT CORRECTO)
+# 🔑 LOGIN EXITOSO (SESIÓN ÚNICA)
 # ==================================================
 def _login_success(user):
     session_id = str(uuid.uuid4())
@@ -156,22 +157,19 @@ def _login_success(user):
     conn = get_connection()
     cur = conn.cursor()
 
-    # 🔥 Invalida sesiones anteriores
     cur.execute("""
         UPDATE users
-        SET active_session_id = %s,
-            last_login_at = UTC_TIMESTAMP()
+        SET active_session_id = %s
         WHERE id = %s
     """, (session_id, user["id"]))
-    conn.commit()
 
+    conn.commit()
     cur.close()
     conn.close()
 
-    # 🔥 JWT CORRECTO (identity SIMPLE + claims)
     access_token = create_access_token(
-        identity=str(user["id"]),  # ⚠️ SOLO STRING
-        additional_claims={
+        identity={
+            "user_id": user["id"],
             "role": user["role"],
             "session_id": session_id
         },
