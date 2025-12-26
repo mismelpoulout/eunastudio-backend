@@ -69,7 +69,7 @@ def login():
     cur.close()
     conn.close()
 
-    # ✅ SIEMPRE devuelve token
+    # ✅ SIEMPRE devuelve token (aunque esté bloqueado)
     return _login_success(user)
 
 
@@ -81,8 +81,18 @@ def login():
 def user_status():
     identity = get_jwt_identity()
 
-    # ✅ FIX: evitar 422 si identity no es dict
-    if not identity or not isinstance(identity, dict):
+    # --------------------------------------------------
+    # 🔥 FIX DEFINITIVO JWT (EVITA 422)
+    # Flask-JWT-Extended guarda identity dentro de "sub"
+    # --------------------------------------------------
+    if not identity:
+        return jsonify({"msg": "Token inválido"}), 401
+
+    # Soporta ambas estructuras: plana o anidada
+    if isinstance(identity, dict) and "sub" in identity:
+        identity = identity["sub"]
+
+    if not isinstance(identity, dict):
         return jsonify({"msg": "Token inválido"}), 401
 
     user_id = identity.get("user_id")
@@ -92,7 +102,9 @@ def user_status():
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    # 🔥 TODO EL BLOQUEO SE CALCULA EN MYSQL (ANTI TIMEZONE BUG)
+    # --------------------------------------------------
+    # 🔥 BLOQUEO CALCULADO 100% EN MYSQL (ANTI TIMEZONE)
+    # --------------------------------------------------
     cur.execute(f"""
         SELECT
             id,
@@ -155,7 +167,7 @@ def user_status():
 
     blocked = bool(user["blocked"])
 
-    # 🔒 Persistir bloqueo si cambió
+    # 🔒 Persistir bloqueo solo si cambió
     if blocked and not user["is_blocked"]:
         cur.execute(
             "UPDATE users SET is_blocked = 1 WHERE id = %s",
@@ -184,7 +196,7 @@ def _login_success(user):
     conn = get_connection()
     cur = conn.cursor()
 
-    # 🔥 invalida sesiones anteriores
+    # 🔥 Invalida sesiones anteriores
     cur.execute("""
         UPDATE users
         SET active_session_id = %s,
