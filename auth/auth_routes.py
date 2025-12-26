@@ -80,8 +80,12 @@ def login():
 @jwt_required()
 def user_status():
     identity = get_jwt_identity()
-    user_id = identity.get("user_id")
 
+    # ✅ FIX: evitar 422 si identity no es dict
+    if not identity or not isinstance(identity, dict):
+        return jsonify({"msg": "Token inválido"}), 401
+
+    user_id = identity.get("user_id")
     if not user_id:
         return jsonify({"msg": "Token inválido"}), 401
 
