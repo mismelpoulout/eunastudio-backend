@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta, datetime
+from datetime import timedelta
 
 from flask import Blueprint, request, jsonify
 from werkzeug.security import check_password_hash
@@ -16,10 +16,11 @@ from utils.limiter import limiter
 auth = Blueprint("auth", __name__)
 
 TRIAL_HOURS = 72
+TRIAL_SECONDS = TRIAL_HOURS * 3600
 
 
 # ==================================================
-# 🔐 LOGIN
+# 🔐 LOGIN (NUNCA BLOQUEA)
 # ==================================================
 @auth.post("/login")
 @limiter.limit("5 per minute")
@@ -68,11 +69,12 @@ def login():
     cur.close()
     conn.close()
 
-    # ✅ SIEMPRE DEVUELVE TOKEN
+    # ✅ SIEMPRE devuelve token
     return _login_success(user)
 
+
 # ==================================================
-# 🔍 STATUS USUARIO (FRONTEND)
+# 🔍 STATUS USUARIO (FUENTE DE LA VERDAD)
 # ==================================================
 @auth.get("/user/status")
 @jwt_required()
@@ -86,12 +88,60 @@ def user_status():
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    cur.execute("""
-        SELECT id, role, plan, created_at, plan_expires_at, is_blocked
+    # 🔥 TODO EL BLOQUEO SE CALCULA EN MYSQL (ANTI TIMEZONE BUG)
+    cur.execute(f"""
+        SELECT
+            id,
+            role,
+            plan,
+            is_blocked,
+
+            CASE
+              WHEN role <> 'admin'
+                   AND plan = 'trial'
+                   AND created_at IS NOT NULL
+                   AND TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) >= {TRIAL_SECONDS}
+              THEN 1
+
+              WHEN role <> 'admin'
+                   AND plan IN ('monthly','quarterly')
+                   AND (plan_expires_at IS NULL OR plan_expires_at <= UTC_TIMESTAMP())
+              THEN 1
+
+              ELSE 0
+            END AS blocked,
+
+            CASE
+              WHEN role <> 'admin'
+                   AND plan = 'trial'
+                   AND created_at IS NOT NULL
+              THEN GREATEST(
+                   0,
+                   {TRIAL_SECONDS} - TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP())
+              )
+              ELSE NULL
+            END AS trial_remaining_seconds,
+
+            CASE
+              WHEN role <> 'admin'
+                   AND plan IN ('monthly','quarterly')
+                   AND plan_expires_at IS NOT NULL
+              THEN GREATEST(
+                   0,
+                   TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), plan_expires_at)
+              )
+              WHEN role <> 'admin'
+                   AND plan IN ('monthly','quarterly')
+                   AND plan_expires_at IS NULL
+              THEN 0
+              ELSE NULL
+            END AS plan_remaining_seconds
+
         FROM users
         WHERE id = %s
         LIMIT 1
     """, (user_id,))
+
     user = cur.fetchone()
 
     if not user:
@@ -99,43 +149,9 @@ def user_status():
         conn.close()
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
-    now = datetime.utcnow()
-    blocked = False
-    trial_remaining_seconds = None
-    plan_remaining_seconds = None
+    blocked = bool(user["blocked"])
 
-    is_admin = user["role"] == "admin"
-
-    created_at = user.get("created_at")
-    plan_expires_at = user.get("plan_expires_at")
-
-    if isinstance(created_at, str):
-        try:
-            created_at = datetime.fromisoformat(created_at.replace("Z", ""))
-        except Exception:
-            created_at = None
-
-    if isinstance(plan_expires_at, str):
-        try:
-            plan_expires_at = datetime.fromisoformat(plan_expires_at.replace("Z", ""))
-        except Exception:
-            plan_expires_at = None
-
-    if not is_admin and user["plan"] == "trial" and created_at:
-        trial_end = created_at + timedelta(hours=TRIAL_HOURS)
-        trial_remaining_seconds = max(int((trial_end - now).total_seconds()), 0)
-        if now > trial_end:
-            blocked = True
-
-    if not is_admin and user["plan"] in ("monthly", "quarterly"):
-        if not plan_expires_at:
-            blocked = True
-            plan_remaining_seconds = 0
-        else:
-            plan_remaining_seconds = max(int((plan_expires_at - now).total_seconds()), 0)
-            if now > plan_expires_at:
-                blocked = True
-
+    # 🔒 Persistir bloqueo si cambió
     if blocked and not user["is_blocked"]:
         cur.execute(
             "UPDATE users SET is_blocked = 1 WHERE id = %s",
@@ -150,8 +166,8 @@ def user_status():
         "role": user["role"],
         "plan": user["plan"],
         "blocked": blocked,
-        "trial_remaining_seconds": trial_remaining_seconds,
-        "plan_remaining_seconds": plan_remaining_seconds,
+        "trial_remaining_seconds": user["trial_remaining_seconds"],
+        "plan_remaining_seconds": user["plan_remaining_seconds"],
     }), 200
 
 
@@ -164,6 +180,7 @@ def _login_success(user):
     conn = get_connection()
     cur = conn.cursor()
 
+    # 🔥 invalida sesiones anteriores
     cur.execute("""
         UPDATE users
         SET active_session_id = %s,
