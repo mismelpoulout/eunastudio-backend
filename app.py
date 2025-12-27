@@ -32,12 +32,13 @@ def create_app():
     app = Flask(__name__)
 
     # --------------------------------------------------
-    # 🔐 JWT CONFIG
+    # 🔐 JWT CONFIG (FIJO Y CONSISTENTE)
     # --------------------------------------------------
-    app.config["JWT_SECRET_KEY"] = os.environ.get(
-        "JWT_SECRET_KEY", "dev-secret-no-usar-en-prod"
-    )
+    app.config["JWT_SECRET_KEY"] = "EUNASTUDIO_SUPER_SECRET_JWT_KEY_2025"
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
+    app.config["JWT_TOKEN_LOCATION"] = ["headers"]
+    app.config["JWT_HEADER_NAME"] = "Authorization"
+    app.config["JWT_HEADER_TYPE"] = "Bearer"
 
     JWTManager(app)
 
