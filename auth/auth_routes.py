@@ -77,8 +77,8 @@ def login():
 def user_status():
     identity = get_jwt_identity()
 
-    # ✅ identity YA ES el dict correcto
-    if not isinstance(identity, dict):
+    # ✅ FIX REAL: identity YA es el dict correcto
+    if not identity or not isinstance(identity, dict):
         return jsonify({"msg": "Token inválido"}), 401
 
     user_id = identity.get("user_id")
@@ -88,7 +88,7 @@ def user_status():
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT
             id,
             role,
@@ -99,7 +99,7 @@ def user_status():
               WHEN role <> 'admin'
                    AND plan = 'trial'
                    AND created_at IS NOT NULL
-                   AND TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) >= %s
+                   AND TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) >= {TRIAL_SECONDS}
               THEN 1
 
               WHEN role <> 'admin'
@@ -109,11 +109,10 @@ def user_status():
 
               ELSE 0
             END AS blocked
-
         FROM users
         WHERE id = %s
         LIMIT 1
-    """, (TRIAL_SECONDS, user_id))
+    """, (user_id,))
 
     user = cur.fetchone()
 
@@ -124,7 +123,6 @@ def user_status():
 
     blocked = bool(user["blocked"])
 
-    # 🔒 Persistir bloqueo
     if blocked and not user["is_blocked"]:
         cur.execute(
             "UPDATE users SET is_blocked = 1 WHERE id = %s",
