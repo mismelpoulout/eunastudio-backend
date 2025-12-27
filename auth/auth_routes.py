@@ -77,14 +77,7 @@ def login():
 def user_status():
     identity = get_jwt_identity()
 
-    # 🔥 FIX DEFINITIVO 422
-    if not identity:
-        return jsonify({"msg": "Token inválido"}), 401
-
-    # JWT viene en sub
-    if isinstance(identity, dict) and "sub" in identity:
-        identity = identity["sub"]
-
+    # ✅ identity YA ES el dict correcto
     if not isinstance(identity, dict):
         return jsonify({"msg": "Token inválido"}), 401
 
@@ -95,7 +88,7 @@ def user_status():
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    cur.execute(f"""
+    cur.execute("""
         SELECT
             id,
             role,
@@ -106,7 +99,7 @@ def user_status():
               WHEN role <> 'admin'
                    AND plan = 'trial'
                    AND created_at IS NOT NULL
-                   AND TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) >= {TRIAL_SECONDS}
+                   AND TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) >= %s
               THEN 1
 
               WHEN role <> 'admin'
@@ -120,7 +113,7 @@ def user_status():
         FROM users
         WHERE id = %s
         LIMIT 1
-    """, (user_id,))
+    """, (TRIAL_SECONDS, user_id))
 
     user = cur.fetchone()
 
@@ -131,6 +124,7 @@ def user_status():
 
     blocked = bool(user["blocked"])
 
+    # 🔒 Persistir bloqueo
     if blocked and not user["is_blocked"]:
         cur.execute(
             "UPDATE users SET is_blocked = 1 WHERE id = %s",
@@ -146,7 +140,6 @@ def user_status():
         "plan": user["plan"],
         "blocked": blocked
     }), 200
-
 
 # ==================================================
 # 🔑 LOGIN EXITOSO (SESIÓN ÚNICA)
