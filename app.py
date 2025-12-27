@@ -42,21 +42,6 @@ def create_app():
 
     JWTManager(app)
 
-@jwt.invalid_token_loader
-def invalid_token_callback(error):
-    logging.error(f"❌ JWT inválido: {error}")
-    return {"msg": "Invalid token"}, 401
-
-@jwt.unauthorized_loader
-def missing_token_callback(error):
-    logging.error(f"❌ JWT faltante: {error}")
-    return {"msg": "Missing Authorization Header"}, 401
-
-@jwt.expired_token_loader
-def expired_token_callback(jwt_header, jwt_payload):
-    logging.error("❌ JWT expirado")
-    return {"msg": "Token expired"}, 401
-
     # --------------------------------------------------
     # 🌍 CORS
     # --------------------------------------------------
