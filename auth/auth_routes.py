@@ -77,67 +77,67 @@ def login():
 def user_status():
     identity = get_jwt_identity()
 
-    # ✅ FIX REAL: identity YA es el dict correcto
     if not identity or not isinstance(identity, dict):
         return jsonify({"msg": "Token inválido"}), 401
 
     user_id = identity.get("user_id")
     if not user_id:
-        return jsonify({"msg": "Token inválido"}), 401
+        return jsonify({"msg": "ID de usuario no encontrado en el token"}), 401
 
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
 
-    cur.execute(f"""
-        SELECT
-            id,
-            role,
-            plan,
-            is_blocked,
+    try:
+        # 1. Calculamos el estado de bloqueo en el Query
+        # Nota: Agregamos la constante TRIAL_SECONDS como parámetro
+        query = f"""
+            SELECT 
+                id, role, plan, is_blocked,
+                CASE 
+                  WHEN role = 'admin' THEN 0
+                  WHEN plan = 'trial' AND created_at IS NOT NULL 
+                       AND TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) >= %s THEN 1
+                  WHEN plan IN ('monthly', 'quarterly') 
+                       AND (plan_expires_at IS NULL OR plan_expires_at <= UTC_TIMESTAMP()) THEN 1
+                  ELSE 0 
+                END AS should_be_blocked
+            FROM users 
+            WHERE id = %s 
+            LIMIT 1
+        """
+        cur.execute(query, (TRIAL_SECONDS, user_id))
+        user = cur.fetchone()
 
-            CASE
-              WHEN role <> 'admin'
-                   AND plan = 'trial'
-                   AND created_at IS NOT NULL
-                   AND TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) >= {TRIAL_SECONDS}
-              THEN 1
+        if not user:
+            return jsonify({"msg": "Usuario no encontrado"}), 404
 
-              WHEN role <> 'admin'
-                   AND plan IN ('monthly','quarterly')
-                   AND (plan_expires_at IS NULL OR plan_expires_at <= UTC_TIMESTAMP())
-              THEN 1
+        # 2. Determinamos el estado final
+        # Un usuario está bloqueado si ya estaba marcado (is_blocked) 
+        # o si el cálculo de tiempo dice que debería estarlo (should_be_blocked)
+        is_now_blocked = bool(user["should_be_blocked"]) or bool(user["is_blocked"])
 
-              ELSE 0
-            END AS blocked
-        FROM users
-        WHERE id = %s
-        LIMIT 1
-    """, (user_id,))
+        # 3. Sincronizamos la Base de Datos solo si es necesario
+        # IMPORTANTE: Nunca bloqueamos al admin en el UPDATE como doble seguro
+        if user["should_be_blocked"] and not user["is_blocked"] and user["role"] != 'admin':
+            cur.execute(
+                "UPDATE users SET is_blocked = 1 WHERE id = %s AND role <> 'admin'",
+                (user_id,)
+            )
+            conn.commit()
 
-    user = cur.fetchone()
+        return jsonify({
+            "role": user["role"],
+            "plan": user["plan"],
+            "blocked": is_now_blocked
+        }), 200
 
-    if not user:
+    except Exception as e:
+        print(f"❌ Error en user_status: {e}")
+        return jsonify({"msg": "Error interno del servidor"}), 500
+    
+    finally:
         cur.close()
         conn.close()
-        return jsonify({"msg": "Usuario no encontrado"}), 404
-
-    blocked = bool(user["blocked"])
-
-    if blocked and not user["is_blocked"]:
-        cur.execute(
-            "UPDATE users SET is_blocked = 1 WHERE id = %s",
-            (user_id,)
-        )
-        conn.commit()
-
-    cur.close()
-    conn.close()
-
-    return jsonify({
-        "role": user["role"],
-        "plan": user["plan"],
-        "blocked": blocked
-    }), 200
 
 # ==================================================
 # 🔑 LOGIN EXITOSO (SESIÓN ÚNICA)
